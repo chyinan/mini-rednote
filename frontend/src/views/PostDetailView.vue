@@ -1,0 +1,562 @@
+<script setup>
+import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { getPostDetail, getComments, addComment, toggleLike, toggleCollection, getImageUrl } from '../api'
+import { useUserStore } from '../stores/user'
+import { useTransitionStore } from '../stores/transition'
+import { ElMessage } from 'element-plus'
+import html2canvas from 'html2canvas'
+
+const route = useRoute()
+const router = useRouter()
+const userStore = useUserStore()
+const transitionStore = useTransitionStore()
+const post = ref(null)
+const comments = ref([])
+const newComment = ref('')
+const isLiked = ref(false)
+const isCollected = ref(false)
+const containerRef = ref(null)
+
+// Animation states
+const isAnimating = ref(false)
+const initialRect = transitionStore.selectedImgRect
+const showContent = ref(false)
+
+// Styles for animation
+const animStyle = ref({})
+
+// Share states
+const showShareModal = ref(false)
+const shareCardRef = ref(null)
+const generatedImage = ref('')
+const isGenerating = ref(false)
+
+// Full Screen Image Viewer states
+const isFullScreen = ref(false)
+const scale = ref(1)
+const translateX = ref(0)
+const translateY = ref(0)
+const isDragging = ref(false)
+const startX = ref(0)
+const startY = ref(0)
+
+const openFullScreen = () => {
+  isFullScreen.value = true
+  scale.value = 1
+  translateX.value = 0
+  translateY.value = 0
+}
+
+const closeFullScreen = () => {
+  isFullScreen.value = false
+}
+
+const handleWheel = (e) => {
+  e.preventDefault()
+  const delta = e.deltaY > 0 ? 0.9 : 1.1
+  const newScale = scale.value * delta
+  if (newScale >= 0.5 && newScale <= 5) {
+    scale.value = newScale
+  }
+}
+
+const startDrag = (e) => {
+  e.preventDefault()
+  isDragging.value = true
+  startX.value = e.clientX - translateX.value
+  startY.value = e.clientY - translateY.value
+}
+
+const onDrag = (e) => {
+  if (!isDragging.value) return
+  e.preventDefault()
+  translateX.value = e.clientX - startX.value
+  translateY.value = e.clientY - startY.value
+}
+
+const stopDrag = () => {
+  isDragging.value = false
+}
+
+const fullScreenImageStyle = computed(() => ({
+  transform: `translate(${translateX.value}px, ${translateY.value}px) scale(${scale.value})`,
+  cursor: isDragging.value ? 'grabbing' : 'grab',
+  transition: isDragging.value ? 'none' : 'transform 0.1s ease-out'
+}))
+
+const postId = route.params.id
+
+const isLoggedIn = computed(() => !!userStore.user)
+
+onMounted(async () => {
+  if (!postId) {
+    ElMessage.error('帖子ID无效')
+    router.back()
+    return
+  }
+
+  if (initialRect.value) {
+    isAnimating.value = true
+    // Initial state: position at the source image
+    animStyle.value = {
+      position: 'fixed',
+      top: `${initialRect.value.top}px`,
+      left: `${initialRect.value.left}px`,
+      width: `${initialRect.value.width}px`,
+      height: `${initialRect.value.height}px`,
+      transition: 'all 0.4s cubic-bezier(0.2, 0, 0.2, 1)',
+      zIndex: 100,
+      borderRadius: '0px',
+      objectFit: 'cover'
+    }
+  } else {
+    showContent.value = true
+  }
+  
+  try {
+    // Pass user ID if logged in to check like/collection status
+    const userId = userStore.user ? userStore.user.id : null
+    const postRes = await getPostDetail(postId, userId)
+    
+    if (!postRes || !postRes.data) {
+      ElMessage.error('帖子不存在或已被删除')
+      router.back()
+      return
+    }
+    
+    post.value = postRes.data
+    
+    // Initialize states from backend
+    isLiked.value = !!post.value.is_liked
+    isCollected.value = !!post.value.is_collected
+    
+    fetchComments()
+
+    // Start Animation after post is loaded and we have the image URL
+    if (initialRect.value) {
+      // Force reflow
+      await nextTick()
+      setTimeout(() => {
+        // Target state: Centered
+        // We need to calculate the target position relative to the window
+        // A 60% width container centered
+        const windowWidth = window.innerWidth
+        const windowHeight = window.innerHeight
+        const targetWidth = Math.min(windowWidth * 0.8, 1152) * 0.6 // 60% of max-w-6xl
+        // Actually simpler: we can animate to the final modal image position if we know it.
+        // Or we just animate to center and fade in the modal.
+        // Let's animate to approximately where the left image column will be.
+        
+        // Simplified: Animate to center-ish, then swap.
+        // Better: Use a layout that matches the modal.
+        
+        // Let's try to calculate the target rect of the image container in the modal
+        // Modal max-w-6xl = 1152px. Image is 60% width.
+        const modalWidth = Math.min(windowWidth, 1152)
+        const modalHeight = windowHeight * 0.85
+        const imgWidth = windowWidth >= 768 ? modalWidth * 0.6 : modalWidth
+        const imgHeight = modalHeight
+
+        const targetLeft = windowWidth >= 768 ? (windowWidth - modalWidth) / 2 : 0
+        const targetTop = (windowHeight - modalHeight) / 2
+        
+        animStyle.value = {
+          position: 'fixed',
+          top: `${targetTop}px`,
+          left: `${targetLeft}px`,
+          width: `${imgWidth}px`,
+          height: `${imgHeight}px`,
+          transition: 'all 0.3s cubic-bezier(0.2, 0, 0.2, 1)',
+          zIndex: 100,
+          borderRadius: '1.5rem 0 0 1.5rem', // Match modal radius
+          objectFit: 'contain',
+          backgroundColor: '#000'
+        }
+
+        setTimeout(() => {
+          isAnimating.value = false
+          showContent.value = true
+          transitionStore.setRect(null) // Clear
+        }, 300)
+      }, 50)
+    }
+
+  } catch (e) {
+    console.error('加载笔记失败:', e)
+    // ... error handling
+    if (e.response?.status === 404) {
+      setTimeout(() => router.back(), 1500)
+    }
+  }
+})
+
+onUnmounted(() => {
+  document.body.style.overflow = ''
+})
+
+const fetchComments = async () => {
+  try {
+    const res = await getComments(postId)
+    comments.value = res.data
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+const handleLike = async () => {
+  // ... (keep existing logic)
+  if (!isLoggedIn.value) {
+    ElMessage.warning('请先登录')
+    return
+  }
+  try {
+    const res = await toggleLike(postId, userStore.user.id)
+    if (res.data.success) {
+      isLiked.value = !isLiked.value
+      post.value.likes_count += isLiked.value ? 1 : -1
+      ElMessage.success(isLiked.value ? '点赞成功' : '已取消点赞')
+    }
+  } catch (e) {
+    ElMessage.error('操作失败')
+  }
+}
+
+const handleCollect = async () => {
+  // ... (keep existing logic)
+  if (!isLoggedIn.value) {
+    ElMessage.warning('请先登录')
+    return
+  }
+  try {
+    const res = await toggleCollection(postId, userStore.user.id)
+    if (res.data.success) {
+      isCollected.value = !isCollected.value
+      ElMessage.success(isCollected.value ? '收藏成功' : '已取消收藏')
+    }
+  } catch (e) {
+    ElMessage.error('操作失败')
+  }
+}
+
+
+const handleShare = async () => {
+  showShareModal.value = true
+  isGenerating.value = true
+  generatedImage.value = ''
+  
+  // Allow DOM to render the hidden card
+  await nextTick()
+  
+  // Small delay to ensure image loaded
+  setTimeout(async () => {
+    if (shareCardRef.value) {
+      try {
+        const canvas = await html2canvas(shareCardRef.value, {
+          useCORS: true,
+          scale: 2, // Higher quality
+          backgroundColor: '#ffffff',
+        })
+        generatedImage.value = canvas.toDataURL('image/jpeg', 0.9)
+      } catch (e) {
+        console.error('Generation failed', e)
+        ElMessage.error('生成分享图失败')
+      } finally {
+        isGenerating.value = false
+      }
+    }
+  }, 500)
+}
+
+const downloadImage = () => {
+  if (!generatedImage.value) return
+  const link = document.createElement('a')
+  link.href = generatedImage.value
+  link.download = `xhs-share-${postId}.jpg`
+  link.click()
+}
+
+const handleComment = async () => {
+  if (!newComment.value.trim()) return
+  if (!isLoggedIn.value) {
+    ElMessage.warning('请先登录')
+    return
+  }
+  
+  try {
+    const res = await addComment(postId, userStore.user.id, newComment.value)
+    if (res.data.success) {
+      ElMessage.success('评论成功')
+      newComment.value = ''
+      fetchComments()
+    }
+  } catch (e) {
+    ElMessage.error('评论失败')
+  }
+}
+
+const closeDetail = () => {
+  router.back()
+}
+</script>
+
+<template>
+  <!-- Modal Overlay -->
+  <div class="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 md:p-10" @click.self="closeDetail">
+    
+    <!-- Full Screen Image Viewer -->
+    <div v-if="isFullScreen" 
+         class="fixed inset-0 z-[100] bg-black flex items-center justify-center overflow-hidden"
+         @click.self="closeFullScreen"
+         @wheel="handleWheel"
+    >
+      <!-- Controls -->
+      <div class="absolute top-4 right-4 flex gap-4 z-[101]">
+         <div class="bg-black/50 text-white px-3 py-1 rounded-full text-sm backdrop-blur-sm select-none pointer-events-none flex items-center justify-center">
+            {{ Math.round(scale * 100) }}%
+         </div>
+         <button @click="closeFullScreen" class="w-10 h-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+         </button>
+      </div>
+
+      <img 
+        :src="getImageUrl(post?.image_url)" 
+        class="max-w-none select-none"
+        :style="fullScreenImageStyle"
+        @mousedown="startDrag"
+        @mousemove="onDrag"
+        @mouseup="stopDrag"
+        @mouseleave="stopDrag"
+        draggable="false"
+      />
+    </div>
+
+    <!-- Share Modal -->
+    <div v-if="showShareModal" class="fixed inset-0 bg-black/60 z-[80] flex items-center justify-center p-4" @click.self="showShareModal = false">
+      <div class="bg-white rounded-2xl overflow-hidden max-w-sm w-full flex flex-col max-h-[90vh]">
+        <div class="p-4 border-b border-gray-100 flex justify-between items-center">
+          <h3 class="text-lg font-medium">分享给好友</h3>
+          <button @click="showShareModal = false" class="text-gray-400 hover:text-gray-600">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        <div class="p-6 flex-1 overflow-y-auto flex flex-col items-center justify-center bg-gray-50">
+          <div v-if="isGenerating" class="flex flex-col items-center text-gray-500">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-xhs-red mb-2"></div>
+            <p>生成分享卡片中...</p>
+          </div>
+          <img v-else-if="generatedImage" :src="generatedImage" class="w-full rounded-lg shadow-md object-contain max-h-[60vh]" />
+        </div>
+        
+        <div class="p-4 border-t border-gray-100">
+          <button 
+            @click="downloadImage"
+            :disabled="!generatedImage"
+            class="w-full py-2.5 bg-xhs-red text-white rounded-full font-medium hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M12 12.75l-3-3m0 0 3-3m-3 3h7.5" />
+            </svg>
+            保存到本地
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Invisible Render Container for Share Card -->
+    <div class="fixed left-[-9999px] top-0" v-if="showShareModal">
+      <div ref="shareCardRef" class="w-[375px] bg-white p-5 flex flex-col gap-4">
+        <!-- Header -->
+        <div class="flex items-center gap-2">
+          <img :src="getImageUrl(post?.avatar_url) || 'https://via.placeholder.com/40'" class="w-8 h-8 rounded-full object-cover" crossOrigin="anonymous">
+          <span class="text-sm font-medium text-gray-900">{{ post?.nickname }}</span>
+        </div>
+        
+        <!-- Main Image -->
+        <div class="rounded-xl overflow-hidden aspect-[4/3] bg-gray-50 relative">
+           <img 
+            :src="getImageUrl(post?.image_url)" 
+            class="w-full h-full object-cover"
+            crossOrigin="anonymous"
+          >
+        </div>
+        
+        <!-- Content -->
+        <div>
+          <h1 class="text-lg font-bold text-gray-900 mb-2">{{ post?.title }}</h1>
+          <p class="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{{ post?.content }}</p>
+        </div>
+        
+        <!-- Footer -->
+        <div class="flex items-center justify-between pt-4 border-t border-gray-100 mt-2">
+          <div class="flex items-center gap-1">
+            <!-- <img src="/logo2.png" class="h-4 object-contain"> -->
+            <span class="text-xs text-gray-400">小红书 - 你的生活指南</span>
+          </div>
+          <div class="text-xs text-gray-300">长按识别二维码</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Close Button -->
+    <button @click="closeDetail" class="absolute top-4 left-4 w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-md hover:bg-gray-100 transition-colors z-[70]">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5 text-gray-600">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+      </svg>
+    </button>
+
+    <!-- Floating Image for Animation -->
+    <img 
+      v-if="isAnimating && post"
+      :src="getImageUrl(post.image_url) || 'https://via.placeholder.com/600x800'"
+      :style="animStyle"
+      class="pointer-events-none shadow-2xl"
+    />
+
+    <!-- Detail Card -->
+    <div v-if="post" 
+      class="bg-white w-full max-w-6xl h-[85vh] rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl transition-opacity duration-300"
+      :class="showContent ? 'opacity-100' : 'opacity-0'"
+    >
+      
+      <!-- Left: Image (Scrollable if nice, or fit) -->
+      <div class="w-full md:w-[60%] bg-black flex items-center justify-center relative overflow-hidden group/image">
+        <div class="w-full h-full flex items-center justify-center bg-gray-100 relative">
+           <img 
+            :src="getImageUrl(post.image_url) || 'https://via.placeholder.com/600x800'" 
+            class="max-w-full max-h-full object-contain cursor-zoom-in transition-transform duration-300 group-hover/image:scale-[1.02]"
+            @click="openFullScreen"
+          >
+           <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 group-hover/image:opacity-100 transition-opacity duration-300">
+              <div class="bg-black/50 text-white px-3 py-1.5 rounded-full text-sm backdrop-blur-sm flex items-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM10.5 7.5v6m3-3h-6" />
+                </svg>
+                查看大图
+              </div>
+           </div>
+        </div>
+      </div>
+
+      <!-- Right: Content & Interaction -->
+      <div class="w-full md:w-[40%] flex flex-col bg-white h-full">
+        <!-- Header: Author -->
+        <div class="p-5 border-b border-gray-50 flex items-center justify-between flex-shrink-0">
+          <div class="flex items-center gap-3">
+            <img 
+              :src="getImageUrl(post.avatar_url) || 'https://via.placeholder.com/40'" 
+              class="w-10 h-10 rounded-full object-cover border border-gray-100"
+            >
+            <span class="font-medium text-gray-900">{{ post.nickname }}</span>
+          </div>
+          <button class="px-5 py-1.5 rounded-full border border-xhs-red text-xhs-red text-sm font-medium hover:bg-red-50 transition-colors">
+            关注
+          </button>
+        </div>
+
+        <!-- Scrollable Content Area -->
+        <div class="flex-1 overflow-y-auto p-5 custom-scrollbar">
+          <h1 class="text-xl font-bold text-gray-900 mb-3 leading-snug">{{ post.title }}</h1>
+          <p class="text-gray-700 whitespace-pre-wrap text-base leading-relaxed mb-4">
+            {{ post.content }}
+          </p>
+          <p class="text-xs text-gray-400 mb-6">{{ new Date(post.created_at).toLocaleDateString() }}</p>
+          
+          <div class="border-t border-gray-100 pt-6">
+            <h3 class="text-sm font-medium text-gray-500 mb-4">共 {{ comments.length }} 条评论</h3>
+            
+            <!-- Comment List -->
+            <div class="space-y-5">
+              <div v-for="comment in comments" :key="comment.id" class="flex gap-3">
+                <img 
+                  :src="getImageUrl(comment.avatar_url) || 'https://via.placeholder.com/32'" 
+                  class="w-8 h-8 rounded-full object-cover border border-gray-100 flex-shrink-0"
+                >
+                <div class="flex-1">
+                  <div class="flex items-baseline gap-2 mb-1">
+                    <span class="text-sm font-medium text-gray-600">{{ comment.nickname }}</span>
+                  </div>
+                  <p class="text-sm text-gray-800 leading-normal">{{ comment.content }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer: Actions & Input -->
+        <div class="p-4 border-t border-gray-100 flex-shrink-0 bg-white">
+          <!-- Action Buttons -->
+          <div class="flex items-center justify-between mb-4 px-2">
+            <div class="flex items-center gap-6">
+              <button @click="handleLike" class="flex items-center gap-1.5 group">
+                <svg xmlns="http://www.w3.org/2000/svg" :fill="isLiked ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-7 h-7 transition-colors" :class="isLiked ? 'text-xhs-red' : 'text-gray-600 group-hover:text-gray-900'">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+                </svg>
+                <span class="text-sm font-medium" :class="isLiked ? 'text-gray-900' : 'text-gray-600'">{{ post.likes_count }}</span>
+              </button>
+              
+              <button @click="handleCollect" class="flex items-center gap-1.5 group">
+                <svg xmlns="http://www.w3.org/2000/svg" :fill="isCollected ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-7 h-7 transition-colors" :class="isCollected ? 'text-yellow-500' : 'text-gray-600 group-hover:text-gray-900'">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.562 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.563.563 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.563.563 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+                </svg>
+                <span class="text-sm font-medium" :class="isCollected ? 'text-gray-900' : 'text-gray-600'">收藏</span>
+              </button>
+              
+              <button @click="handleShare" class="flex items-center gap-1.5 group">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-7 h-7 text-gray-600 group-hover:text-gray-900">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z" />
+                </svg>
+                <span class="text-sm font-medium text-gray-600">分享</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Input -->
+          <div class="flex items-center gap-3 relative">
+            <div class="relative flex-1">
+              <input 
+                v-model="newComment"
+                type="text" 
+                placeholder="说点什么..." 
+                class="w-full h-10 pl-4 pr-16 bg-gray-100 rounded-full border-none focus:bg-gray-50 focus:ring-1 focus:ring-gray-200 transition-all text-sm"
+                @keyup.enter="handleComment"
+              >
+              <!-- Emoji Icon placeholder -->
+              <div class="absolute right-3 top-2 text-gray-400 cursor-pointer hover:text-gray-600">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.182 15.182a4.5 4.5 0 0 1-6.364 0M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Z" />
+                </svg>
+              </div>
+            </div>
+            <button 
+              @click="handleComment"
+              class="px-4 py-1.5 bg-xhs-red text-white rounded-full text-sm font-medium hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              :disabled="!newComment.trim()"
+            >
+              发送
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #e5e7eb;
+  border-radius: 20px;
+}
+</style>

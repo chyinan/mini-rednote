@@ -1,0 +1,7 @@
+streamlit
+pymysql
+python-dotenv
+streamlit-option-menu
+pillow
+bcrypt
+extra-streamlit-components

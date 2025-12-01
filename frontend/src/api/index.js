@@ -1,0 +1,57 @@
+import axios from 'axios'
+
+const api = axios.create({
+  baseURL: 'http://localhost:8000/api',
+})
+
+export const login = (username, password) => api.post('/login', { username, password })
+export const register = (username, password, nickname) => api.post('/register', { username, password, nickname })
+export const getPosts = (limit = 20, offset = 0, search = '', category = '') => 
+  api.get('/posts', { params: { limit, offset, search, category } })
+export const createPost = (formData) => api.post('/posts', formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+})
+export const getPostDetail = (id, userId = null) => {
+  const params = {}
+  if (userId) {
+    params.user_id = userId
+  }
+  return api.get(`/posts/${id}`, { params })
+}
+export const getComments = (id) => api.get(`/posts/${id}/comments`)
+export const addComment = (postId, userId, content) => api.post(`/posts/${postId}/comments`, { user_id: userId, content })
+export const toggleLike = (postId, userId) => api.post(`/posts/${postId}/like`, { user_id: userId })
+export const toggleCollection = (postId, userId) => api.post(`/posts/${postId}/collect`, { user_id: userId })
+export const getUserPosts = (userId, currentUserId = null) => {
+  const params = {}
+  if (currentUserId) {
+    params.current_user_id = currentUserId
+  }
+  return api.get(`/posts/user/${userId}`, { params })
+}
+export const getUserLikedPosts = (userId) => api.get(`/posts/user/${userId}/liked`)
+export const getUserCollectedPosts = (userId) => api.get(`/posts/user/${userId}/collected`)
+export const updateProfile = (formData) => api.put('/user/profile', formData)
+export const getPublicUserProfile = (userId) => api.get(`/users/${userId}`)
+
+// New APIs for delete and visibility
+export const deletePost = (postId, userId) => api.delete(`/posts/${postId}`, { data: { user_id: userId } })
+export const updatePostVisibility = (postId, userId, isPrivate) => api.put(`/posts/${postId}/visibility`, { user_id: userId, is_private: isPrivate })
+
+// Message APIs
+export const sendMessage = (senderId, receiverId, content) => api.post('/messages', { sender_id: senderId, receiver_id: receiverId, content })
+export const getConversations = (userId) => api.get('/messages/conversations', { params: { user_id: userId } })
+export const getConversation = (otherUserId, userId, limit = 50, offset = 0) => 
+  api.get(`/messages/conversation/${otherUserId}`, { params: { user_id: userId, limit, offset } })
+export const markMessagesRead = (userId, senderId) => api.put('/messages/read', { user_id: userId, sender_id: senderId })
+export const getUnreadCount = (userId) => api.get('/messages/unread/count', { params: { user_id: userId } })
+
+export const getImageUrl = (path) => {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
+  }
+  // path might be absolute "assets/..." or just filename
+  const filename = path.split(/[\\/]/).pop()
+  return `http://localhost:8000/assets/${filename}`
+}

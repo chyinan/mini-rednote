@@ -97,19 +97,21 @@ onMounted(async () => {
 })
 
 // Listen to route changes to reload data if ID changes
-watch(() => route.params, () => {
-    const newId = route.params.id || route.params.postId
-    if (newId) loadPostData()
-}, { deep: true })
+watch(() => [route.params.id, route.params.postId], ([newId, newPostId]) => {
+    const id = newId || newPostId
+    console.log('Route params changed:', { newId, newPostId, resolvedId: id })
+    if (id) loadPostData()
+})
 
 const loadPostData = async () => {
   const currentPostId = route.params.id || route.params.postId
   console.log('Loading post data for ID:', currentPostId)
 
   if (!currentPostId) {
-    console.error('No post ID found')
+    console.error('No post ID found', route.params)
     // Don't redirect back immediately, let user see error
     ElMessage.error('帖子ID无效')
+    isLoading.value = false
     return
   }
 
@@ -118,26 +120,23 @@ const loadPostData = async () => {
   showContent.value = false
   isLoading.value = true
 
-  if (initialRect.value) {
-    isAnimating.value = true
-    // ... (keep existing animation logic init)
-    animStyle.value = {
-      position: 'fixed',
-      top: `${initialRect.value.top}px`,
-      left: `${initialRect.value.left}px`,
-      width: `${initialRect.value.width}px`,
-      height: `${initialRect.value.height}px`,
-      transition: 'all 0.4s cubic-bezier(0.2, 0, 0.2, 1)',
-      zIndex: 100,
-      borderRadius: '0px',
-      objectFit: 'cover'
-    }
-  } else {
-    // Directly show content placeholder if no animation
-    showContent.value = true
-  }
-  
   try {
+    if (initialRect) {
+      isAnimating.value = true
+      // ... (keep existing animation logic init)
+      animStyle.value = {
+        position: 'fixed',
+        top: `${initialRect.top}px`,
+        left: `${initialRect.left}px`,
+        width: `${initialRect.width}px`,
+        height: `${initialRect.height}px`,
+        transition: 'all 0.4s cubic-bezier(0.2, 0, 0.2, 1)',
+        zIndex: 100,
+        borderRadius: '0px',
+        objectFit: 'cover'
+      }
+    }
+    
     const userId = userStore.user ? userStore.user.id : null
     console.log('Fetching details from API...')
     const postRes = await getPostDetail(currentPostId, userId)
@@ -147,6 +146,7 @@ const loadPostData = async () => {
       throw new Error('No data returned')
     }
     
+    console.log('Post data loaded successfully', postRes.data)
     post.value = postRes.data
     
     isLiked.value = !!post.value.is_liked
@@ -164,7 +164,7 @@ const loadPostData = async () => {
     fetchComments(currentPostId)
 
     // Animation logic after load
-    if (initialRect.value) {
+    if (initialRect) {
        await nextTick()
         setTimeout(() => {
             const windowWidth = window.innerWidth
@@ -197,6 +197,8 @@ const loadPostData = async () => {
         }, 50)
     } else {
         // If no animation, just ensure content is shown
+        console.log('No initial animation, showing content directly')
+        await nextTick()
         showContent.value = true
     }
 
@@ -204,6 +206,7 @@ const loadPostData = async () => {
     console.error('加载笔记失败:', e)
     ElMessage.error('加载失败，请重试')
   } finally {
+    console.log('Setting isLoading to false')
     isLoading.value = false
   }
 }
@@ -382,6 +385,10 @@ const closeDetail = () => {
   <!-- Modal Overlay -->
   <div class="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 md:p-10" @click.self="closeDetail">
     
+    <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center z-[70]">
+        <div class="animate-spin rounded-full h-10 w-10 border-4 border-white/20 border-t-white"></div>
+    </div>
+
     <!-- Full Screen Image Viewer -->
     <div v-if="isFullScreen" 
          class="fixed inset-0 z-[100] bg-black flex items-center justify-center overflow-hidden"

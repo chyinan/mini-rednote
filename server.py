@@ -61,6 +61,10 @@ class MarkRead(BaseModel):
 async def login(user_data: UserLogin):
     user, msg = AuthService.login_user(user_data.username, user_data.password)
     if user:
+        # 生成JWT令牌（可选，如果前端需要）
+        # from backend.jwt_auth import create_access_token
+        # token = create_access_token(data={"sub": user["id"]})
+        # return {"success": True, "user": user, "token": token}
         return {"success": True, "user": user}
     return {"success": False, "message": msg}
 

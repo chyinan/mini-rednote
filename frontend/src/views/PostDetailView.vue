@@ -23,6 +23,8 @@ const isLoading = ref(true)
 // Animation states
 const isAnimating = ref(false)
 const initialRect = transitionStore.selectedImgRect
+const initialSrc = transitionStore.selectedImgSrc
+const placeholderImg = ref(initialSrc)
 const showContent = ref(false)
 
 // Styles for animation
@@ -123,7 +125,7 @@ const loadPostData = async () => {
   try {
     if (initialRect) {
       isAnimating.value = true
-      // ... (keep existing animation logic init)
+      // Initialize animation with placeholder if available
       animStyle.value = {
         position: 'fixed',
         top: `${initialRect.top}px`,
@@ -135,6 +137,32 @@ const loadPostData = async () => {
         borderRadius: '0px',
         objectFit: 'cover'
       }
+      
+      // Start animation immediately using placeholder
+      await nextTick()
+      setTimeout(() => {
+          const windowWidth = window.innerWidth
+          const windowHeight = window.innerHeight
+          const modalWidth = Math.min(windowWidth, 1152)
+          const modalHeight = windowHeight * 0.85
+          const imgWidth = windowWidth >= 768 ? modalWidth * 0.6 : modalWidth
+          const imgHeight = modalHeight
+          const targetLeft = windowWidth >= 768 ? (windowWidth - modalWidth) / 2 : 0
+          const targetTop = (windowHeight - modalHeight) / 2
+          
+          animStyle.value = {
+            position: 'fixed',
+            top: `${targetTop}px`,
+            left: `${targetLeft}px`,
+            width: `${imgWidth}px`,
+            height: `${imgHeight}px`,
+            transition: 'all 0.3s cubic-bezier(0.2, 0, 0.2, 1)',
+            zIndex: 100,
+            borderRadius: '1.5rem 0 0 1.5rem',
+            objectFit: 'contain',
+            backgroundColor: '#ffffff'
+          }
+      }, 50)
     }
     
     const userId = userStore.user ? userStore.user.id : null
@@ -163,43 +191,19 @@ const loadPostData = async () => {
     
     fetchComments(currentPostId)
 
-    // Animation logic after load
     if (initialRect) {
-       await nextTick()
+       // Animation already started, just finish it when data is ready
         setTimeout(() => {
-            const windowWidth = window.innerWidth
-            const windowHeight = window.innerHeight
-            const modalWidth = Math.min(windowWidth, 1152)
-            const modalHeight = windowHeight * 0.85
-            const imgWidth = windowWidth >= 768 ? modalWidth * 0.6 : modalWidth
-            const imgHeight = modalHeight
-            const targetLeft = windowWidth >= 768 ? (windowWidth - modalWidth) / 2 : 0
-            const targetTop = (windowHeight - modalHeight) / 2
-            
-            animStyle.value = {
-            position: 'fixed',
-            top: `${targetTop}px`,
-            left: `${targetLeft}px`,
-            width: `${imgWidth}px`,
-            height: `${imgHeight}px`,
-            transition: 'all 0.3s cubic-bezier(0.2, 0, 0.2, 1)',
-            zIndex: 100,
-            borderRadius: '1.5rem 0 0 1.5rem',
-            objectFit: 'contain',
-            backgroundColor: '#000'
-            }
-
-            setTimeout(() => {
-            isAnimating.value = false
-            showContent.value = true
-            transitionStore.setRect(null)
-            }, 300)
-        }, 50)
+        isAnimating.value = false
+        // showContent.value = true
+        transitionStore.setRect(null)
+        }, 350) // Wait for animation to complete
     } else {
         // If no animation, just ensure content is shown
         console.log('No initial animation, showing content directly')
         await nextTick()
-        showContent.value = true
+        // showContent.value = true
+        isAnimating.value = false // Ensure animation state is off
     }
 
   } catch (e) {
@@ -497,20 +501,21 @@ const closeDetail = () => {
 
     <!-- Floating Image for Animation -->
     <img 
-      v-if="isAnimating && post"
-      :src="getImageUrl(post.image_url) || 'https://via.placeholder.com/600x800'"
+      v-if="isAnimating"
+      :src="getImageUrl(post?.image_url) || placeholderImg || 'https://via.placeholder.com/600x800'"
       :style="animStyle"
       class="pointer-events-none shadow-2xl"
     />
 
     <!-- Detail Card -->
     <div v-if="post" 
-      class="bg-white w-full max-w-6xl h-[85vh] rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl transition-opacity duration-300"
-      :class="showContent ? 'opacity-100' : 'opacity-0'"
+      class="w-full max-w-6xl h-[85vh] rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl"
     >
       
       <!-- Left: Image (Scrollable if nice, or fit) -->
-      <div class="w-full md:w-[60%] bg-black flex items-center justify-center relative overflow-hidden group/image">
+      <div class="w-full md:w-[60%] bg-black flex items-center justify-center relative overflow-hidden group/image z-10"
+           :class="{'opacity-0': isAnimating}"
+      >
         <div class="w-full h-full flex items-center justify-center bg-gray-100 relative">
            <img 
             :src="getImageUrl(post.image_url) || 'https://via.placeholder.com/600x800'" 
@@ -529,7 +534,10 @@ const closeDetail = () => {
       </div>
 
       <!-- Right: Content & Interaction -->
-      <div class="w-full md:w-[40%] flex flex-col bg-white h-full">
+      <div 
+        class="w-full md:w-[40%] flex flex-col bg-white h-full transition-all duration-500 transform relative z-0"
+        :class="isAnimating ? '-translate-x-full opacity-0' : 'translate-x-0 opacity-100'"
+      >
         <!-- Header: Author -->
         <div class="p-5 border-b border-gray-50 flex items-center justify-between flex-shrink-0">
           <div class="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" @click="router.push(`/user/${post.user_id}`)">

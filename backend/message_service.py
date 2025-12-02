@@ -5,6 +5,14 @@ class MessageService:
     @staticmethod
     def send_message(sender_id: int, receiver_id: int, content: str):
         """Send a message from one user to another."""
+        # 输入验证
+        if not content or len(content.strip()) < 1:
+            return False, "消息内容不能为空"
+        if len(content) > 5000:
+            return False, "消息内容不能超过5000个字符"
+        if sender_id == receiver_id:
+            return False, "不能给自己发消息"
+        
         conn = db.get_connection()
         if not conn:
             return False, "Database connection failed"
@@ -15,16 +23,16 @@ class MessageService:
                 check_sql = "SELECT id FROM users WHERE id = %s"
                 cursor.execute(check_sql, (receiver_id,))
                 if not cursor.fetchone():
-                    return False, "Receiver not found"
+                    return False, "接收者不存在"
 
                 sql = """
                     INSERT INTO messages (sender_id, receiver_id, content) 
                     VALUES (%s, %s, %s)
                 """
-                cursor.execute(sql, (sender_id, receiver_id, content))
+                cursor.execute(sql, (sender_id, receiver_id, content.strip()))
             return True, "Message sent successfully"
         except Exception as e:
-            return False, f"Failed to send message: {str(e)}"
+            return False, "Failed to send message"
 
     @staticmethod
     def get_conversation(user1_id: int, user2_id: int, limit: int = 50, offset: int = 0):

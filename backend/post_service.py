@@ -6,6 +6,19 @@ class PostService:
     @staticmethod
     def create_post(user_id, title, content, image_file, category='推荐'):
         """Create a new post."""
+        # 输入验证
+        if not title or len(title.strip()) < 1:
+            return False, "标题不能为空"
+        if len(title) > 100:
+            return False, "标题不能超过100个字符"
+        if content and len(content) > 10000:
+            return False, "内容不能超过10000个字符"
+        if category and len(category) > 50:
+            return False, "分类名称过长"
+        
+        if not image_file:
+            return False, "必须上传图片"
+        
         conn = db.get_connection()
         if not conn:
             return False, "Database connection failed"
@@ -15,10 +28,12 @@ class PostService:
             
             with conn.cursor() as cursor:
                 sql = "INSERT INTO posts (user_id, title, content, image_url, category, is_private) VALUES (%s, %s, %s, %s, %s, FALSE)"
-                cursor.execute(sql, (user_id, title, content, image_url, category))
+                cursor.execute(sql, (user_id, title.strip(), content.strip() if content else None, image_url, category))
             return True, "Post created successfully"
+        except ValueError as e:
+            return False, str(e)  # 文件验证错误
         except Exception as e:
-            return False, f"Failed to create post: {str(e)}"
+            return False, "Failed to create post"
 
     @staticmethod
     def get_posts(limit=20, offset=0, search_query=None, category=None):
@@ -284,18 +299,29 @@ class PostService:
     @staticmethod
     def add_comment(user_id, post_id, content):
         """Add a comment to a post."""
+        # 输入验证
+        if not content or len(content.strip()) < 1:
+            return False, "评论内容不能为空"
+        if len(content) > 1000:
+            return False, "评论内容不能超过1000个字符"
+        
         conn = db.get_connection()
         if not conn:
-            return False
+            return False, "Database connection failed"
 
         try:
             with conn.cursor() as cursor:
+                # 验证帖子是否存在
+                cursor.execute("SELECT id FROM posts WHERE id = %s", (post_id,))
+                if not cursor.fetchone():
+                    return False, "帖子不存在"
+                
                 sql = "INSERT INTO comments (user_id, post_id, content) VALUES (%s, %s, %s)"
-                cursor.execute(sql, (user_id, post_id, content))
-            return True
+                cursor.execute(sql, (user_id, post_id, content.strip()))
+            return True, "评论成功"
         except Exception as e:
             print(f"Error adding comment: {e}")
-            return False
+            return False, "评论失败"
 
     @staticmethod
     def get_comments(post_id, current_user_id=None):

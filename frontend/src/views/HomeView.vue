@@ -66,7 +66,7 @@ const goToDetail = (id, event) => {
   
   if (imgElement) {
     const rect = imgElement.getBoundingClientRect()
-    transitionStore.setRect(rect)
+    transitionStore.setRect(rect, imgElement.src)
   }
   
   router.push(`/explore/${id}`)

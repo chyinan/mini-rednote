@@ -64,17 +64,24 @@ onUnmounted(() => {
       <img src="/logo2.png" alt="小红书" class="h-8 object-contain" />
     </div>
 
-    <!-- Search (Centered) -->
-    <div class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md hidden md:block">
-      <div class="relative">
+    <!-- Search (Centered on desktop, expanded on mobile) -->
+    <div class="flex-1 mx-4 max-w-md md:absolute md:left-1/2 md:top-1/2 md:transform md:-translate-x-1/2 md:-translate-y-1/2 md:w-full">
+      <div class="relative group">
         <input 
           v-model="search"
           type="text" 
           placeholder="探索更多内容" 
-          class="w-full h-10 pl-4 pr-10 bg-gray-50 rounded-full border border-transparent focus:bg-white focus:border-gray-300 focus:outline-none text-sm transition-all"
+          class="w-full h-9 md:h-10 pl-8 md:pl-4 pr-8 md:pr-10 bg-gray-50 rounded-full border border-transparent focus:bg-white focus:border-gray-300 focus:outline-none text-sm transition-all"
           @keyup.enter="handleSearch"
         >
-        <div class="absolute right-3 top-2.5 text-gray-400 cursor-pointer" @click="handleSearch">
+        <!-- Mobile Search Icon (Left) -->
+        <div class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 md:hidden">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+          </svg>
+        </div>
+        <!-- Desktop Search Icon (Right) -->
+        <div class="absolute right-3 top-2.5 text-gray-400 cursor-pointer hidden md:block" @click="handleSearch">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
             <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
           </svg>
@@ -82,8 +89,8 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- Actions -->
-    <div class="flex items-center gap-6">
+    <!-- Actions (Desktop Only) -->
+    <div class="hidden md:flex items-center gap-6">
       <template v-if="userStore.user">
         <button class="flex items-center gap-1.5 bg-xhs-red text-white px-4 py-1.5 rounded-full text-sm font-medium hover:bg-red-600 transition-colors" @click="router.push('/publish')">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">

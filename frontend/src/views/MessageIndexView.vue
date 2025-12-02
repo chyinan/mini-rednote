@@ -75,8 +75,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="container mx-auto px-4 py-8 max-w-2xl">
-    <div class="flex gap-6 mb-6 border-b border-gray-100">
+  <div class="container mx-auto px-4 py-4 md:py-8 max-w-2xl">
+    <div class="flex gap-6 mb-4 md:mb-6 border-b border-gray-100">
         <button 
             class="pb-3 px-2 font-bold text-lg transition-colors border-b-2"
             :class="activeTab === 'messages' ? 'text-gray-900 border-xhs-red' : 'text-gray-400 border-transparent hover:text-gray-600'"

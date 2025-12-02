@@ -49,7 +49,14 @@ watch(() => route.query.q, () => {
   fetchPosts()
 })
 
+watch(() => route.query.category, (newVal) => {
+  activeCategory.value = newVal || "推荐"
+})
+
 onMounted(() => {
+  if (route.query.category) {
+    activeCategory.value = route.query.category
+  }
   fetchPosts()
   updateColumnCount()
   window.addEventListener('resize', updateColumnCount)
@@ -75,7 +82,7 @@ const goToDetail = (id, event) => {
 
 <template>
   <!-- Category Tabs - Scroll with content under the nav bar -->
-  <div class="bg-white border-b border-gray-100/50 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+  <div class="hidden md:block bg-white border-b border-gray-100/50 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
     <div class="flex items-center justify-center gap-1 py-2 overflow-x-auto no-scrollbar max-w-7xl mx-auto px-4">
       <button 
         v-for="cat in categories" 
@@ -89,10 +96,10 @@ const goToDetail = (id, event) => {
     </div>
   </div>
 
-  <div class="container mx-auto px-4 max-w-7xl mt-2">
+  <div class="container mx-auto px-2 md:px-4 max-w-7xl mt-2">
     <!-- Waterfall Grid (JS Calculated) -->
-    <div class="flex gap-4 items-start">
-      <div v-for="(col, index) in waterfallPosts" :key="index" class="flex-1 space-y-4 flex flex-col">
+    <div class="flex gap-2 md:gap-4 items-start">
+      <div v-for="(col, index) in waterfallPosts" :key="index" class="flex-1 space-y-2 md:space-y-4 flex flex-col">
         <WaterfallCard 
           v-for="post in col" 
           :key="post.id" 

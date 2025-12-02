@@ -34,6 +34,13 @@ const handleTogglePrivacy = (e) => {
       仅自己可见
     </div>
 
+    <!-- Video Indicator -->
+    <div v-if="post.video_url" class="absolute top-2 right-2 z-10 w-6 h-6 bg-black/30 text-white rounded-full flex items-center justify-center backdrop-blur-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+          <path fill-rule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653Z" clip-rule="evenodd" />
+        </svg>
+    </div>
+
     <!-- Action Buttons (Visible on Hover if showActions is true) -->
     <div v-if="showActions" class="absolute top-2 right-2 z-20 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
       <!-- Toggle Privacy Button -->

@@ -117,9 +117,14 @@ async def create_post(
     title: str = Form(...),
     content: str = Form(...),
     category: str = Form(...),
-    image: UploadFile = File(...)
+    images: List[UploadFile] = File(None),
+    video: UploadFile = File(None)
 ):
-    success, msg = PostService.create_post(user_id, title, content, image, category)
+    # Ensure at least images or video + cover image is provided
+    if not images and not video:
+        raise HTTPException(status_code=400, detail="Images or Video required")
+
+    success, msg = PostService.create_post(user_id, title, content, images, category, video)
     return {"success": success, "message": msg}
 
 @app.get("/api/posts/user/{user_id}")

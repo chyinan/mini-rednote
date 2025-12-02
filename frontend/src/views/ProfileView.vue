@@ -373,9 +373,9 @@ const goToChat = () => {
 </script>
 
 <template>
-  <div class="container mx-auto px-4 py-8 max-w-5xl" v-if="user">
+  <div class="container mx-auto px-2 md:px-4 py-4 md:py-8 max-w-5xl" v-if="user">
     <!-- Profile Header -->
-    <div class="flex flex-col items-center mb-12">
+    <div class="flex flex-col items-center mb-6 md:mb-12">
       <div class="relative group cursor-pointer" @click="isOwnProfile && startEdit()">
         <img 
           :src="getImageUrl(user.avatar_url) || 'https://via.placeholder.com/100'" 
@@ -458,9 +458,9 @@ const goToChat = () => {
     <!-- Content -->
     <div v-if="activeTab === 'notes'">
       <!-- JS Calculated Columns -->
-      <div class="flex gap-4 items-start" :class="{ 'justify-center': posts.length < columnCount }">
+      <div class="flex gap-2 md:gap-4 items-start" :class="{ 'justify-center': posts.length < columnCount }">
         <div v-for="(col, index) in waterfallPosts" :key="index" 
-             class="space-y-4 flex flex-col"
+             class="space-y-2 md:space-y-4 flex flex-col"
              :class="posts.length < columnCount ? 'flex-none' : 'flex-1'"
              :style="posts.length < columnCount ? colWidthStyle : {}"
         >
@@ -481,9 +481,9 @@ const goToChat = () => {
     </div>
 
     <div v-else-if="activeTab === 'likes'">
-      <div class="flex gap-4 items-start" :class="{ 'justify-center': likedPosts.length < columnCount }">
+      <div class="flex gap-2 md:gap-4 items-start" :class="{ 'justify-center': likedPosts.length < columnCount }">
         <div v-for="(col, index) in waterfallLiked" :key="index" 
-             class="space-y-4 flex flex-col"
+             class="space-y-2 md:space-y-4 flex flex-col"
              :class="likedPosts.length < columnCount ? 'flex-none' : 'flex-1'"
              :style="likedPosts.length < columnCount ? colWidthStyle : {}"
         >
@@ -501,9 +501,9 @@ const goToChat = () => {
     </div>
     
     <div v-else-if="activeTab === 'collect'">
-      <div class="flex gap-4 items-start" :class="{ 'justify-center': collectedPosts.length < columnCount }">
+      <div class="flex gap-2 md:gap-4 items-start" :class="{ 'justify-center': collectedPosts.length < columnCount }">
         <div v-for="(col, index) in waterfallCollected" :key="index" 
-             class="space-y-4 flex flex-col"
+             class="space-y-2 md:space-y-4 flex flex-col"
              :class="collectedPosts.length < columnCount ? 'flex-none' : 'flex-1'"
              :style="collectedPosts.length < columnCount ? colWidthStyle : {}"
         >

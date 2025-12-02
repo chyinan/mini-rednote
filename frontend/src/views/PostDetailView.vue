@@ -45,15 +45,63 @@ const isDragging = ref(false)
 const startX = ref(0)
 const startY = ref(0)
 
+// Carousel states
+const currentImageIndex = ref(0)
+const autoPlayInterval = ref(null)
+
+const currentImage = computed(() => {
+    if (!post.value) return ''
+    // If images array exists and is not empty, use it
+    if (post.value.images && post.value.images.length > 0) {
+        return post.value.images[currentImageIndex.value]
+    }
+    // Fallback to legacy single image
+    return post.value.image_url
+})
+
+const imageList = computed(() => {
+    if (!post.value) return []
+    if (post.value.images && post.value.images.length > 0) {
+        return post.value.images
+    }
+    return [post.value.image_url].filter(Boolean)
+})
+
+const nextImage = () => {
+    if (imageList.value.length <= 1) return
+    currentImageIndex.value = (currentImageIndex.value + 1) % imageList.value.length
+}
+
+const prevImage = () => {
+    if (imageList.value.length <= 1) return
+    currentImageIndex.value = (currentImageIndex.value - 1 + imageList.value.length) % imageList.value.length
+}
+
+const startAutoPlay = () => {
+    stopAutoPlay()
+    if (imageList.value.length > 1) {
+        autoPlayInterval.value = setInterval(nextImage, 3000) // 3s
+    }
+}
+
+const stopAutoPlay = () => {
+    if (autoPlayInterval.value) {
+        clearInterval(autoPlayInterval.value)
+        autoPlayInterval.value = null
+    }
+}
+
 const openFullScreen = () => {
   isFullScreen.value = true
   scale.value = 1
   translateX.value = 0
   translateY.value = 0
+  stopAutoPlay() // Stop auto play when fullscreen
 }
 
 const closeFullScreen = () => {
   isFullScreen.value = false
+  startAutoPlay() // Resume auto play
 }
 
 const handleWheel = (e) => {
@@ -98,6 +146,11 @@ onMounted(async () => {
   await loadPostData()
 })
 
+onUnmounted(() => {
+  document.body.style.overflow = ''
+  stopAutoPlay()
+})
+
 // Listen to route changes to reload data if ID changes
 watch(() => [route.params.id, route.params.postId], ([newId, newPostId]) => {
     const id = newId || newPostId
@@ -106,6 +159,8 @@ watch(() => [route.params.id, route.params.postId], ([newId, newPostId]) => {
 })
 
 const loadPostData = async () => {
+  stopAutoPlay()
+  currentImageIndex.value = 0
   const currentPostId = route.params.id || route.params.postId
   console.log('Loading post data for ID:', currentPostId)
 
@@ -177,6 +232,9 @@ const loadPostData = async () => {
     console.log('Post data loaded successfully', postRes.data)
     post.value = postRes.data
     
+    // Start auto play if multiple images
+    startAutoPlay()
+    
     isLiked.value = !!post.value.is_liked
     isCollected.value = !!post.value.is_collected
     
@@ -214,10 +272,6 @@ const loadPostData = async () => {
     isLoading.value = false
   }
 }
-
-onUnmounted(() => {
-  document.body.style.overflow = ''
-})
 
 const fetchComments = async (pid) => {
   const id = pid || post.value?.id
@@ -387,15 +441,15 @@ const closeDetail = () => {
 
 <template>
   <!-- Modal Overlay -->
-  <div class="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 md:p-10" @click.self="closeDetail">
+  <div class="fixed inset-0 z-[60] bg-white md:bg-black/40 md:flex md:items-center md:justify-center md:p-10 overflow-y-auto md:overflow-hidden custom-scrollbar" @click.self="closeDetail">
     
     <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center z-[70]">
-        <div class="animate-spin rounded-full h-10 w-10 border-4 border-white/20 border-t-white"></div>
+        <div class="animate-spin rounded-full h-10 w-10 border-4 border-gray-200 border-t-xhs-red md:border-white/20 md:border-t-white"></div>
     </div>
 
     <!-- Full Screen Image Viewer -->
     <div v-if="isFullScreen" 
-         class="fixed inset-0 z-[100] bg-black flex items-center justify-center overflow-hidden"
+         class="fixed inset-0 z-[100] bg-black flex items-center justify-center overflow-hidden group"
          @click.self="closeFullScreen"
          @wheel="handleWheel"
     >
@@ -411,9 +465,31 @@ const closeDetail = () => {
          </button>
       </div>
 
+      <!-- Navigation Buttons (Fullscreen) -->
+      <button 
+        v-if="imageList.length > 1"
+        @click.stop="prevImage" 
+        class="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-black/20 hover:bg-black/40 text-white rounded-full flex items-center justify-center backdrop-blur-sm transition-colors z-[102]"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-6 h-6">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+        </svg>
+      </button>
+
+      <button 
+        v-if="imageList.length > 1"
+        @click.stop="nextImage" 
+        class="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-black/20 hover:bg-black/40 text-white rounded-full flex items-center justify-center backdrop-blur-sm transition-colors z-[102]"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-6 h-6">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+        </svg>
+      </button>
+
+
       <img 
-        :src="getImageUrl(post?.image_url)" 
-        class="max-w-none select-none"
+        :src="getImageUrl(currentImage)" 
+        class="max-w-none select-none transition-all duration-300"
         :style="fullScreenImageStyle"
         @mousedown="startDrag"
         @mousemove="onDrag"
@@ -421,6 +497,18 @@ const closeDetail = () => {
         @mouseleave="stopDrag"
         draggable="false"
       />
+      
+      <!-- Indicators (Fullscreen) -->
+      <div class="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-2 z-[102]" v-if="imageList.length > 1">
+        <div 
+            v-for="(_, idx) in imageList" 
+            :key="idx"
+            class="w-2 h-2 rounded-full transition-all"
+            :class="idx === currentImageIndex ? 'bg-white w-4' : 'bg-white/40 hover:bg-white/60'"
+            @click.stop="currentImageIndex = idx"
+        ></div>
+      </div>
+
     </div>
 
     <!-- Share Modal -->
@@ -471,7 +559,7 @@ const closeDetail = () => {
         <div class="rounded-xl overflow-hidden aspect-[4/3] bg-gray-50 relative">
            <div 
             class="w-full h-full bg-cover bg-center bg-no-repeat"
-            :style="{ backgroundImage: `url(${getImageUrl(post?.image_url)})` }"
+            :style="{ backgroundImage: `url(${getImageUrl(currentImage)})` }"
           ></div>
         </div>
         
@@ -509,19 +597,37 @@ const closeDetail = () => {
 
     <!-- Detail Card -->
     <div v-if="post" 
-      class="w-full max-w-6xl h-[85vh] rounded-3xl overflow-hidden flex flex-col md:flex-row shadow-2xl"
+      class="w-full max-w-6xl bg-white md:h-[85vh] md:rounded-3xl md:overflow-hidden flex flex-col md:flex-row md:shadow-2xl min-h-full md:min-h-0"
     >
       
-      <!-- Left: Image (Scrollable if nice, or fit) -->
-      <div class="w-full md:w-[60%] bg-black flex items-center justify-center relative overflow-hidden group/image z-10"
+      <!-- Left: Image Carousel or Video Player -->
+      <div class="w-full md:h-full md:w-[60%] bg-black flex items-center justify-center relative overflow-hidden group/image z-10 flex-shrink-0"
            :class="{'opacity-0': isAnimating}"
+           @mouseenter="stopAutoPlay"
+           @mouseleave="startAutoPlay"
       >
-        <div class="w-full h-full flex items-center justify-center bg-gray-100 relative">
-           <img 
-            :src="getImageUrl(post.image_url) || 'https://via.placeholder.com/600x800'" 
-            class="max-w-full max-h-full object-contain cursor-zoom-in transition-transform duration-300 group-hover/image:scale-[1.02]"
-            @click="openFullScreen"
-          >
+        <!-- Video Player -->
+        <div v-if="post.video_url" class="w-full h-auto aspect-[3/4] md:aspect-auto md:h-full flex items-center justify-center bg-black">
+            <video 
+                :src="getImageUrl(post.video_url)" 
+                controls 
+                autoplay 
+                class="max-w-full max-h-full w-full h-full object-contain"
+                :poster="getImageUrl(post.image_url)"
+            ></video>
+        </div>
+
+        <!-- Image Carousel -->
+        <div v-else class="w-full h-auto aspect-[3/4] md:aspect-auto md:h-full flex items-center justify-center bg-gray-100 relative">
+           <transition name="fade" mode="out-in">
+             <img 
+              :key="currentImage"
+              :src="getImageUrl(currentImage) || 'https://via.placeholder.com/600x800'" 
+              class="max-w-full max-h-full object-contain cursor-zoom-in transition-transform duration-300 group-hover/image:scale-[1.02]"
+              @click="openFullScreen"
+            >
+           </transition>
+           
            <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 group-hover/image:opacity-100 transition-opacity duration-300">
               <div class="bg-black/50 text-white px-3 py-1.5 rounded-full text-sm backdrop-blur-sm flex items-center gap-1">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
@@ -530,16 +636,49 @@ const closeDetail = () => {
                 查看大图
               </div>
            </div>
+
+           <!-- Navigation Buttons -->
+           <button 
+             v-if="imageList.length > 1"
+             @click.stop="prevImage"
+             class="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/20 hover:bg-black/40 text-white rounded-full flex items-center justify-center backdrop-blur-sm transition-colors opacity-0 group-hover/image:opacity-100"
+           >
+             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5">
+               <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+             </svg>
+           </button>
+
+           <button 
+             v-if="imageList.length > 1"
+             @click.stop="nextImage"
+             class="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/20 hover:bg-black/40 text-white rounded-full flex items-center justify-center backdrop-blur-sm transition-colors opacity-0 group-hover/image:opacity-100"
+           >
+             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5">
+               <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+             </svg>
+           </button>
+
+           <!-- Indicators -->
+           <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5" v-if="imageList.length > 1">
+             <div 
+                v-for="(_, idx) in imageList" 
+                :key="idx"
+                class="w-1.5 h-1.5 rounded-full transition-all cursor-pointer shadow-sm"
+                :class="idx === currentImageIndex ? 'bg-white w-3' : 'bg-white/50 hover:bg-white/80'"
+                @click.stop="currentImageIndex = idx"
+             ></div>
+           </div>
+
         </div>
       </div>
 
       <!-- Right: Content & Interaction -->
       <div 
-        class="w-full md:w-[40%] flex flex-col bg-white h-full transition-all duration-500 transform relative z-0"
+        class="w-full md:w-[40%] flex flex-col bg-white md:h-full transition-all duration-500 transform relative z-0"
         :class="isAnimating ? '-translate-x-full opacity-0' : 'translate-x-0 opacity-100'"
       >
         <!-- Header: Author -->
-        <div class="p-5 border-b border-gray-50 flex items-center justify-between flex-shrink-0">
+        <div class="p-5 border-b border-gray-50 flex items-center justify-between flex-shrink-0 sticky top-0 bg-white/95 backdrop-blur-sm z-20 md:relative md:bg-white md:z-auto">
           <div class="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" @click="router.push(`/user/${post.user_id}`)">
             <img 
               :src="getImageUrl(post.avatar_url) || 'https://via.placeholder.com/40'" 
@@ -559,7 +698,7 @@ const closeDetail = () => {
         </div>
 
         <!-- Scrollable Content Area -->
-        <div class="flex-1 overflow-y-auto p-5 custom-scrollbar">
+        <div class="md:flex-1 md:overflow-y-auto p-5 custom-scrollbar pb-24 md:pb-5">
           <h1 class="text-xl font-bold text-gray-900 mb-3 leading-snug">{{ post.title }}</h1>
           <p class="text-gray-700 whitespace-pre-wrap text-base leading-relaxed mb-4">
             {{ post.content }}
@@ -570,26 +709,28 @@ const closeDetail = () => {
             <h3 class="text-sm font-medium text-gray-500 mb-4">共 {{ comments.length }} 条评论</h3>
             
             <!-- Comment List -->
-            <div class="space-y-5">
-              <div v-for="comment in comments" :key="comment.id" class="flex gap-3 group">
-                <img 
-                  :src="getImageUrl(comment.avatar_url) || 'https://via.placeholder.com/32'" 
-                  class="w-8 h-8 rounded-full object-cover border border-gray-100 flex-shrink-0 cursor-pointer"
-                  @click="router.push(`/user/${comment.user_id}`)"
-                >
-                <div class="flex-1">
-                  <div class="flex items-center justify-between mb-1">
-                    <span class="text-sm font-medium text-gray-600 cursor-pointer hover:text-gray-900" @click="router.push(`/user/${comment.user_id}`)">{{ comment.nickname }}</span>
-                    
-                    <!-- Comment Like Button -->
-                    <div class="flex flex-col items-center gap-0.5 cursor-pointer" @click="handleCommentLike(comment)">
-                      <svg xmlns="http://www.w3.org/2000/svg" :fill="comment.is_liked ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 transition-colors" :class="comment.is_liked ? 'text-xhs-red' : 'text-gray-400 group-hover:text-gray-600'">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
-                      </svg>
-                      <span class="text-xs text-gray-400" v-if="comment.likes_count > 0">{{ comment.likes_count }}</span>
+            <div class="max-h-[60vh] overflow-y-auto custom-scrollbar md:max-h-none md:overflow-visible pr-1">
+              <div class="space-y-5">
+                <div v-for="comment in comments" :key="comment.id" class="flex gap-3 group">
+                  <img 
+                    :src="getImageUrl(comment.avatar_url) || 'https://via.placeholder.com/32'" 
+                    class="w-8 h-8 rounded-full object-cover border border-gray-100 flex-shrink-0 cursor-pointer"
+                    @click="router.push(`/user/${comment.user_id}`)"
+                  >
+                  <div class="flex-1">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-sm font-medium text-gray-600 cursor-pointer hover:text-gray-900" @click="router.push(`/user/${comment.user_id}`)">{{ comment.nickname }}</span>
+                      
+                      <!-- Comment Like Button -->
+                      <div class="flex flex-col items-center gap-0.5 cursor-pointer" @click="handleCommentLike(comment)">
+                        <svg xmlns="http://www.w3.org/2000/svg" :fill="comment.is_liked ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 transition-colors" :class="comment.is_liked ? 'text-xhs-red' : 'text-gray-400 group-hover:text-gray-600'">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+                        </svg>
+                        <span class="text-xs text-gray-400" v-if="comment.likes_count > 0">{{ comment.likes_count }}</span>
+                      </div>
                     </div>
+                    <p class="text-sm text-gray-800 leading-normal">{{ comment.content }}</p>
                   </div>
-                  <p class="text-sm text-gray-800 leading-normal">{{ comment.content }}</p>
                 </div>
               </div>
             </div>
@@ -597,7 +738,7 @@ const closeDetail = () => {
         </div>
 
         <!-- Footer: Actions & Input -->
-        <div class="p-4 border-t border-gray-100 flex-shrink-0 bg-white">
+        <div class="p-4 border-t border-gray-100 flex-shrink-0 bg-white fixed bottom-0 left-0 right-0 md:relative md:bottom-auto z-20">
           <!-- Action Buttons -->
           <div class="flex items-center justify-between mb-4 px-2">
             <div class="flex items-center gap-6">
@@ -665,5 +806,15 @@ const closeDetail = () => {
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #e5e7eb;
   border-radius: 20px;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

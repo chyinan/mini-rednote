@@ -42,8 +42,8 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="flex items-center justify-center min-h-[calc(100vh-80px)]">
-    <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 w-full max-w-md">
+  <div class="flex items-center justify-center min-h-[calc(100vh-80px)] px-4">
+    <div class="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 w-full max-w-md">
       <h2 class="text-2xl font-bold text-center mb-8 text-gray-800">{{ isLogin ? '登录小红书' : '注册账号' }}</h2>
       
       <form @submit.prevent="handleSubmit" class="space-y-4">

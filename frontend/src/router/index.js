@@ -20,6 +20,11 @@ const router = createRouter({
       ]
     },
     {
+      path: '/category',
+      name: 'category',
+      component: () => import('../views/CategoryView.vue')
+    },
+    {
       path: '/login',
       name: 'login',
       component: LoginView
@@ -71,7 +76,7 @@ const router = createRouter({
       path: '/messages/:id',
       name: 'chat',
       component: () => import('../views/ChatView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true, hideNavBar: true, hideTabBar: true }
     }
   ]
 })

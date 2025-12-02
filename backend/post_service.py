@@ -1,11 +1,11 @@
 import os
 from .database import db
-from .utils import save_image
+from .utils import save_image, save_video
 
 class PostService:
     @staticmethod
-    def create_post(user_id, title, content, image_file, category='推荐'):
-        """Create a new post."""
+    def create_post(user_id, title, content, image_files, category='推荐', video_file=None):
+        """Create a new post with multiple images or a video."""
         # 输入验证
         if not title or len(title.strip()) < 1:
             return False, "标题不能为空"
@@ -16,23 +16,56 @@ class PostService:
         if category and len(category) > 50:
             return False, "分类名称过长"
         
-        if not image_file:
-            return False, "必须上传图片"
+        if (not image_files or len(image_files) == 0) and not video_file:
+            return False, "必须上传图片或视频"
         
         conn = db.get_connection()
         if not conn:
             return False, "Database connection failed"
 
         try:
-            image_url = save_image(image_file) if image_file else None
+            # Save all images
+            image_urls = []
+            if image_files:
+                for img in image_files:
+                    url = save_image(img)
+                    if url:
+                        image_urls.append(url)
+            
+            if not image_urls and not video_file:
+                return False, "Failed to save images"
+
+            video_url = None
+            if video_file:
+                video_url = save_video(video_file)
+                if not video_url:
+                    return False, "Failed to save video"
+
+            # First image is the cover (required for both image posts and video posts)
+            if not image_urls:
+                 return False, "必须上传封面图片"
+
+            cover_image = image_urls[0]
             
             with conn.cursor() as cursor:
-                sql = "INSERT INTO posts (user_id, title, content, image_url, category, is_private) VALUES (%s, %s, %s, %s, %s, FALSE)"
-                cursor.execute(sql, (user_id, title.strip(), content.strip() if content else None, image_url, category))
+                # Insert into posts
+                sql = "INSERT INTO posts (user_id, title, content, image_url, video_url, category, is_private) VALUES (%s, %s, %s, %s, %s, %s, FALSE)"
+                cursor.execute(sql, (user_id, title.strip(), content.strip() if content else None, cover_image, video_url, category))
+                post_id = cursor.lastrowid
+                
+                # Insert into post_images
+                if post_id and image_urls:
+                    image_values = [(post_id, url, idx) for idx, url in enumerate(image_urls)]
+                    cursor.executemany(
+                        "INSERT INTO post_images (post_id, image_url, sort_order) VALUES (%s, %s, %s)",
+                        image_values
+                    )
+                
             return True, "Post created successfully"
         except ValueError as e:
             return False, str(e)  # 文件验证错误
         except Exception as e:
+            print(f"Create post error: {e}")
             return False, "Failed to create post"
 
     @staticmethod
@@ -109,6 +142,16 @@ class PostService:
                     print(f"Post {post_id} is private")
                     return None
                 
+                # Get all images for this post
+                cursor.execute("SELECT image_url FROM post_images WHERE post_id = %s ORDER BY sort_order ASC", (post_id,))
+                images = [row['image_url'] for row in cursor.fetchall()]
+                
+                # If no images in post_images table (legacy posts), use the one from posts table
+                if not images and post['image_url']:
+                    images = [post['image_url']]
+                
+                post['images'] = images
+                
                 # Initialize interaction status
                 post['is_liked'] = False
                 post['is_collected'] = False
@@ -172,12 +215,6 @@ class PostService:
             return []
         try:
             with conn.cursor() as cursor:
-                # Need to join with users table to get author info
-                # Only show public posts in likes list? Or show all since user liked them?
-                # Usually, if I like a private post (which shouldn't happen unless I'm owner), it's fine.
-                # But if post becomes private, should it disappear from my likes?
-                # For simplicity, filter out private posts unless I am the owner of the POST (not liker).
-                # But simpler: just filter is_private=FALSE for now.
                 sql = """
                     SELECT p.*, u.nickname, u.avatar_url 
                     FROM posts p

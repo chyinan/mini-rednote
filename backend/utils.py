@@ -4,7 +4,7 @@ from PIL import Image
 import imghdr
 
 IMAGE_DIR = "assets"
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB (Increased from 10MB)
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
 ALLOWED_MIME_TYPES = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
 
@@ -24,7 +24,7 @@ def validate_image_file(uploaded_file):
     uploaded_file.file.seek(0)  # 重置文件指针
     
     if len(file_content) > MAX_FILE_SIZE:
-        return False, f"文件大小不能超过 {MAX_FILE_SIZE // (1024*1024)}MB"
+        return False, f"图片大小不能超过 {MAX_FILE_SIZE // (1024*1024)}MB"
     
     if len(file_content) == 0:
         return False, "文件不能为空"
@@ -64,6 +64,50 @@ def validate_image_file(uploaded_file):
         return False, f"无效的图片文件: {str(e)}"
     
     return True, "验证通过"
+
+def validate_video_file(uploaded_file):
+    """Validate uploaded video file."""
+    ALLOWED_VIDEO_EXTENSIONS = {'.mp4', '.mov', '.webm'}
+    MAX_VIDEO_SIZE = 10 * 1024 * 1024 * 1024  # 10GB
+
+    if not uploaded_file.filename:
+        return False, "文件名不能为空"
+    
+    file_ext = os.path.splitext(uploaded_file.filename)[1].lower()
+    if file_ext not in ALLOWED_VIDEO_EXTENSIONS:
+        return False, f"不支持的视频类型，仅支持: {', '.join(ALLOWED_VIDEO_EXTENSIONS)}"
+    
+    # Check file size
+    uploaded_file.file.seek(0, 2) # Seek to end
+    size = uploaded_file.file.tell()
+    uploaded_file.file.seek(0) # Reset
+
+    if size > MAX_VIDEO_SIZE:
+        return False, f"视频大小不能超过 {MAX_VIDEO_SIZE // (1024*1024*1024)}GB"
+    
+    if size == 0:
+        return False, "文件不能为空"
+
+    return True, "验证通过"
+
+def save_video(uploaded_file):
+    """Save uploaded video to assets directory."""
+    is_valid, message = validate_video_file(uploaded_file)
+    if not is_valid:
+        raise ValueError(message)
+
+    if not os.path.exists(IMAGE_DIR):
+        os.makedirs(IMAGE_DIR)
+
+    file_ext = os.path.splitext(uploaded_file.filename)[1].lower()
+    unique_filename = f"{uuid.uuid4()}{file_ext}"
+    file_path = os.path.join(IMAGE_DIR, unique_filename)
+
+    uploaded_file.file.seek(0)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.file.read())
+    
+    return file_path
 
 def save_image(uploaded_file):
     """Save uploaded image to assets directory and return the path."""

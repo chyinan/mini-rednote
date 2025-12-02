@@ -107,6 +107,7 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+assets/
 
 # Jupyter Notebook
 .ipynb_checkpoints

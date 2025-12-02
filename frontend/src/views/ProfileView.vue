@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { useTransitionStore } from '../stores/transition'
-import { getUserPosts, getUserLikedPosts, getUserCollectedPosts, updateProfile, getImageUrl, deletePost, updatePostVisibility, getPublicUserProfile } from '../api'
+import { getUserPosts, getUserLikedPosts, getUserCollectedPosts, updateProfile, getImageUrl, deletePost, updatePostVisibility, getPublicUserProfile, followUser, unfollowUser, checkIsFollowing, getFollowers, getFollowing, getFollowCounts } from '../api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import WaterfallCard from '../components/WaterfallCard.vue'
 
@@ -23,6 +23,13 @@ const editForm = ref({
   avatar: null,
   avatarPreview: ''
 })
+
+// Follow related state
+const followCounts = ref({ followers: 0, following: 0 })
+const isFollowing = ref(false)
+const showFollowList = ref(false)
+const followListType = ref('followers') // 'followers' or 'following'
+const followList = ref([])
 
 // Column Management
 const columnCount = ref(2)
@@ -44,9 +51,13 @@ const getWaterfall = (list) => {
   return cols
 }
 
-const waterfallPosts = computed(() => getWaterfall(posts.value))
-const waterfallLiked = computed(() => getWaterfall(likedPosts.value))
-const waterfallCollected = computed(() => getWaterfall(collectedPosts.value))
+const waterfallPosts = computed(() => getWaterfall(posts.value).filter(col => col.length > 0))
+const waterfallLiked = computed(() => getWaterfall(likedPosts.value).filter(col => col.length > 0))
+const waterfallCollected = computed(() => getWaterfall(collectedPosts.value).filter(col => col.length > 0))
+
+const colWidthStyle = computed(() => ({
+  width: `calc((100% - ${(columnCount.value - 1)} * 1rem) / ${columnCount.value})`
+}))
 
 // Check if viewing own profile
 const isOwnProfile = computed(() => {
@@ -56,6 +67,24 @@ const isOwnProfile = computed(() => {
 const fetchUserContent = async () => {
   if (!user.value) return
   
+  // Fetch follow counts
+  try {
+    const res = await getFollowCounts(user.value.id)
+    followCounts.value = res.data.counts
+  } catch (e) {
+    console.error('Error fetching follow counts', e)
+  }
+
+  // Check follow status if not own profile
+  if (!isOwnProfile.value && userStore.user) {
+    try {
+      const res = await checkIsFollowing(user.value.id, userStore.user.id)
+      isFollowing.value = res.data.is_following
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   console.log('Fetching content for tab:', activeTab.value)
   try {
     if (activeTab.value === 'notes') {
@@ -167,7 +196,20 @@ const goToDetail = (id, event) => {
     transitionStore.setRect(rect)
   }
   
-  router.push(`/explore/${id}`)
+  // Append to current path instead of absolute /explore
+  // Check if we are already in a nested route to avoid double stacking (though unlikely with replacement)
+  // Actually, we want to append 'explore/:id' to the current path
+  // But router.push works best with absolute paths or relative.
+  // If current is /user/123, we want /user/123/explore/456
+  // If current is /profile, we want /profile/explore/456
+  
+  // Simply using 'explore/${id}' (relative) should work if the current route is a parent
+  // But we need to be careful.
+  
+  // Let's use the resolved path logic to be safe, or just append to current route.path
+  // Ensure no trailing slash issues
+  const currentPath = route.path.endsWith('/') ? route.path : route.path + '/'
+  router.push(`${currentPath}explore/${id}`)
 }
 
 const handleDeletePost = async (postId) => {
@@ -211,6 +253,64 @@ const handleTogglePrivacy = async (postId, newStatus) => {
   }
 }
 
+const handleFollow = async () => {
+  if (!userStore.user) {
+    ElMessage.warning('请先登录')
+    router.push('/login')
+    return
+  }
+  try {
+    const res = await followUser(user.value.id, userStore.user.id)
+    if (res.data.success) {
+      isFollowing.value = true
+      followCounts.value.followers++ // Optimistic update
+      ElMessage.success('关注成功')
+    } else {
+      ElMessage.error(res.data.message)
+    }
+  } catch (e) {
+    ElMessage.error('关注失败')
+  }
+}
+
+const handleUnfollow = async () => {
+  try {
+    const res = await unfollowUser(user.value.id, userStore.user.id)
+    if (res.data.success) {
+      isFollowing.value = false
+      followCounts.value.followers-- // Optimistic update
+      ElMessage.success('已取消关注')
+    } else {
+      ElMessage.error(res.data.message)
+    }
+  } catch (e) {
+    ElMessage.error('取消关注失败')
+  }
+}
+
+const openFollowList = async (type) => {
+  followListType.value = type
+  showFollowList.value = true
+  followList.value = [] // Clear first
+  
+  try {
+    const res = type === 'followers' 
+      ? await getFollowers(user.value.id)
+      : await getFollowing(user.value.id)
+    
+    // Response format: { success: true, followers: [...] } or { success: true, following: [...] }
+    followList.value = type === 'followers' ? res.data.followers : res.data.following
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('获取列表失败')
+  }
+}
+
+const goToUser = (userId) => {
+  showFollowList.value = false
+  router.push(`/user/${userId}`)
+}
+
 const goToChat = () => {
   if (user.value) {
     router.push(`/messages/${user.value.id}`)
@@ -234,12 +334,43 @@ const goToChat = () => {
       <h1 class="mt-4 text-xl font-bold text-gray-900">{{ user.nickname }}</h1>
       <p class="text-gray-500 text-sm mt-1">小红书号: {{ user.username }}</p>
       
-      <button v-if="isOwnProfile" @click="startEdit" class="mt-4 px-6 py-1.5 border border-gray-200 rounded-full text-sm font-medium text-gray-600 hover:border-gray-400 transition-colors">
-        编辑资料
-      </button>
-      <button v-else @click="goToChat" class="mt-4 px-6 py-1.5 bg-xhs-red text-white rounded-full text-sm font-medium hover:bg-red-600 transition-colors">
-        发私信
-      </button>
+      <!-- Follow Counts -->
+      <div class="flex gap-6 mt-3 text-sm">
+        <div class="cursor-pointer hover:text-xhs-red" @click="openFollowList('following')">
+          <span class="font-bold text-gray-900">{{ followCounts.following }}</span>
+          <span class="text-gray-500 ml-1">关注</span>
+        </div>
+        <div class="cursor-pointer hover:text-xhs-red" @click="openFollowList('followers')">
+          <span class="font-bold text-gray-900">{{ followCounts.followers }}</span>
+          <span class="text-gray-500 ml-1">粉丝</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div v-if="isOwnProfile" class="mt-4">
+        <button @click="startEdit" class="px-6 py-1.5 border border-gray-200 rounded-full text-sm font-medium text-gray-600 hover:border-gray-400 transition-colors">
+          编辑资料
+        </button>
+      </div>
+      <div v-else class="mt-4 flex gap-2">
+        <button 
+          v-if="isFollowing" 
+          @click="handleUnfollow" 
+          class="px-6 py-1.5 border border-gray-200 rounded-full text-sm font-medium text-gray-600 hover:border-gray-400 transition-colors"
+        >
+          已关注
+        </button>
+        <button 
+          v-else 
+          @click="handleFollow" 
+          class="px-6 py-1.5 bg-xhs-red text-white rounded-full text-sm font-medium hover:bg-red-600 transition-colors"
+        >
+          关注
+        </button>
+        <button @click="goToChat" class="px-6 py-1.5 border border-gray-200 rounded-full text-sm font-medium text-gray-600 hover:border-gray-400 transition-colors">
+          发私信
+        </button>
+      </div>
     </div>
 
     <!-- Tabs -->
@@ -273,8 +404,12 @@ const goToChat = () => {
     <!-- Content -->
     <div v-if="activeTab === 'notes'">
       <!-- JS Calculated Columns -->
-      <div class="flex gap-4 items-start">
-        <div v-for="(col, index) in waterfallPosts" :key="index" class="flex-1 space-y-4 flex flex-col">
+      <div class="flex gap-4 items-start" :class="{ 'justify-center': posts.length < columnCount }">
+        <div v-for="(col, index) in waterfallPosts" :key="index" 
+             class="space-y-4 flex flex-col"
+             :class="posts.length < columnCount ? 'flex-none' : 'flex-1'"
+             :style="posts.length < columnCount ? colWidthStyle : {}"
+        >
           <WaterfallCard 
             v-for="post in col" 
             :key="post.id" 
@@ -292,8 +427,12 @@ const goToChat = () => {
     </div>
 
     <div v-else-if="activeTab === 'likes'">
-      <div class="flex gap-4 items-start">
-        <div v-for="(col, index) in waterfallLiked" :key="index" class="flex-1 space-y-4 flex flex-col">
+      <div class="flex gap-4 items-start" :class="{ 'justify-center': likedPosts.length < columnCount }">
+        <div v-for="(col, index) in waterfallLiked" :key="index" 
+             class="space-y-4 flex flex-col"
+             :class="likedPosts.length < columnCount ? 'flex-none' : 'flex-1'"
+             :style="likedPosts.length < columnCount ? colWidthStyle : {}"
+        >
           <WaterfallCard 
             v-for="post in col" 
             :key="post.id" 
@@ -308,8 +447,12 @@ const goToChat = () => {
     </div>
     
     <div v-else-if="activeTab === 'collect'">
-      <div class="flex gap-4 items-start">
-        <div v-for="(col, index) in waterfallCollected" :key="index" class="flex-1 space-y-4 flex flex-col">
+      <div class="flex gap-4 items-start" :class="{ 'justify-center': collectedPosts.length < columnCount }">
+        <div v-for="(col, index) in waterfallCollected" :key="index" 
+             class="space-y-4 flex flex-col"
+             :class="collectedPosts.length < columnCount ? 'flex-none' : 'flex-1'"
+             :style="collectedPosts.length < columnCount ? colWidthStyle : {}"
+        >
           <WaterfallCard 
             v-for="post in col" 
             :key="post.id" 
@@ -320,6 +463,35 @@ const goToChat = () => {
       </div>
       <div v-if="collectedPosts.length === 0" class="text-center py-20 text-gray-400">
         还没有收藏过笔记哦
+      </div>
+    </div>
+
+    <!-- Follow List Modal -->
+    <div v-if="showFollowList" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showFollowList = false">
+      <div class="bg-white rounded-2xl p-6 w-full max-w-md h-[500px] flex flex-col">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-bold">{{ followListType === 'followers' ? '粉丝列表' : '关注列表' }}</h3>
+          <button @click="showFollowList = false" class="text-gray-400 hover:text-gray-600">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto">
+          <div v-if="followList.length === 0" class="text-center py-10 text-gray-400">
+            暂无{{ followListType === 'followers' ? '粉丝' : '关注' }}
+          </div>
+          <div v-else class="space-y-4">
+            <div v-for="item in followList" :key="item.id" class="flex items-center justify-between">
+              <div class="flex items-center gap-3 cursor-pointer" @click="goToUser(item.id)">
+                <img :src="getImageUrl(item.avatar_url) || 'https://via.placeholder.com/40'" class="w-10 h-10 rounded-full object-cover bg-gray-100">
+                <span class="font-medium text-gray-900">{{ item.nickname }}</span>
+              </div>
+              <!-- Could add follow/unfollow buttons here for quick action -->
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -354,5 +526,25 @@ const goToChat = () => {
         </div>
       </div>
     </div>
+
+    <!-- Nested Router View for Post Detail -->
+    <router-view v-slot="{ Component }">
+      <transition name="modal-fade">
+        <component :is="Component" />
+      </transition>
+    </router-view>
   </div>
 </template>
+
+<style>
+/* Reuse modal transition styles from HomeView if needed, or define here */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+</style>

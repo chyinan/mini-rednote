@@ -7,6 +7,7 @@ import os
 from backend.auth_service import AuthService
 from backend.post_service import PostService
 from backend.message_service import MessageService
+from backend.user_service import UserService
 from backend.database import db
 from backend.utils import save_image
 
@@ -188,6 +189,38 @@ async def get_public_user_profile(user_id: int):
         # Remove sensitive info if any (though get_user_by_id currently only returns safe fields)
         return {"success": True, "user": user}
     raise HTTPException(status_code=404, detail="User not found")
+
+@app.post("/api/users/{user_id}/follow")
+async def follow_user(user_id: int, interaction: InteractionCreate):
+    follower_id = interaction.user_id
+    success, msg = UserService.follow_user(follower_id, user_id)
+    return {"success": success, "message": msg}
+
+@app.post("/api/users/{user_id}/unfollow")
+async def unfollow_user(user_id: int, interaction: InteractionCreate):
+    follower_id = interaction.user_id
+    success, msg = UserService.unfollow_user(follower_id, user_id)
+    return {"success": success, "message": msg}
+
+@app.get("/api/users/{user_id}/is_following")
+async def is_following(user_id: int, current_user_id: int):
+    is_following = UserService.is_following(current_user_id, user_id)
+    return {"success": True, "is_following": is_following}
+
+@app.get("/api/users/{user_id}/followers")
+async def get_followers(user_id: int):
+    followers = UserService.get_followers(user_id)
+    return {"success": True, "followers": followers}
+
+@app.get("/api/users/{user_id}/following")
+async def get_following(user_id: int):
+    following = UserService.get_following(user_id)
+    return {"success": True, "following": following}
+
+@app.get("/api/users/{user_id}/counts")
+async def get_follow_counts(user_id: int):
+    counts = UserService.get_follow_counts(user_id)
+    return {"success": True, "counts": counts}
 
 # --- Message Routes ---
 @app.post("/api/messages")

@@ -48,7 +48,12 @@ class PostService:
                     sql_parts.append("AND p.category = %s")
                     params.append(category)
 
-                sql_parts.append("ORDER BY p.created_at DESC LIMIT %s OFFSET %s")
+                # Randomize for 'Recommend' feed to ensure visibility for all posts
+                if (not category or category == '推荐') and not search_query:
+                    sql_parts.append("ORDER BY RAND() LIMIT %s OFFSET %s")
+                else:
+                    sql_parts.append("ORDER BY p.created_at DESC LIMIT %s OFFSET %s")
+                    
                 params.extend([limit, offset])
 
                 sql = " ".join(sql_parts)

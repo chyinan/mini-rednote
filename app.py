@@ -5,6 +5,7 @@ import extra_streamlit_components as stx
 from backend.database import db
 from backend.auth_service import AuthService
 from backend.post_service import PostService
+from backend.user_service import UserService
 from components.card import render_card
 
 # Page Config
@@ -324,6 +325,21 @@ if st.session_state['selected_post_id']:
             st.title(post['title'])
             st.markdown(f"**作者:** {post['nickname']}")
             st.markdown(f"**时间:** {post['created_at']}")
+            
+            # Follow Button
+            if st.session_state['is_logged_in'] and post['user_id'] != st.session_state['user_info']['id']:
+                is_following = UserService.is_following(st.session_state['user_info']['id'], post['user_id'])
+                col_btn, _ = st.columns([1, 3])
+                with col_btn:
+                    if is_following:
+                        if st.button("已关注", key=f"unfollow_{post['user_id']}"):
+                             UserService.unfollow_user(st.session_state['user_info']['id'], post['user_id'])
+                             st.rerun()
+                    else:
+                        if st.button("关注", key=f"follow_{post['user_id']}", type="primary"):
+                             UserService.follow_user(st.session_state['user_info']['id'], post['user_id'])
+                             st.rerun()
+
             st.write(post['content'])
             
             st.markdown(f"### ❤️ {post['likes_count']} 点赞")
@@ -464,9 +480,13 @@ else:
                 st.image(user['avatar_url'], width=150)
             else:
                 st.image("https://via.placeholder.com/150", width=150)
+            
+            # Display Follow Counts
+            counts = UserService.get_follow_counts(user['id'])
+            st.markdown(f"**关注:** {counts['following']}  |  **粉丝:** {counts['followers']}")
         
         with col_right:
-            with st.expander("编辑资料", expanded=True):
+            with st.expander("编辑资料", expanded=False):
                 with st.form("profile_form"):
                     new_nickname = st.text_input("昵称", value=user['nickname'])
                     uploaded_avatar = st.file_uploader("更换头像", type=['jpg', 'png', 'jpeg'])
@@ -482,16 +502,64 @@ else:
                         else:
                             st.error(msg)
         
-        st.subheader("我的发布")
-        my_posts = PostService.get_user_posts(user['id'])
-        if my_posts:
-            cols = st.columns(5) # Consistent 5 columns
-            for idx, post in enumerate(my_posts):
-                with cols[idx % 5]:
-                    post['nickname'] = user['nickname'] 
-                    render_card(post, click_handler=view_post_details)
-        else:
-            st.info("还没有发布过笔记")
+        st.markdown("---")
+        
+        tab_posts, tab_following, tab_followers = st.tabs(["我的发布", "我的关注", "我的粉丝"])
+        
+        with tab_posts:
+            my_posts = PostService.get_user_posts(user['id'])
+            if my_posts:
+                cols = st.columns(5) # Consistent 5 columns
+                for idx, post in enumerate(my_posts):
+                    with cols[idx % 5]:
+                        post['nickname'] = user['nickname'] 
+                        render_card(post, click_handler=view_post_details)
+            else:
+                st.info("还没有发布过笔记")
+        
+        with tab_following:
+            following = UserService.get_following(user['id'])
+            if following:
+                for f_user in following:
+                    c1, c2, c3 = st.columns([1, 4, 2])
+                    with c1:
+                        if f_user.get('avatar_url') and os.path.exists(f_user['avatar_url']):
+                             st.image(f_user['avatar_url'], width=50)
+                        else:
+                             st.markdown("👤")
+                    with c2:
+                        st.write(f"**{f_user['nickname']}**")
+                    with c3:
+                        if st.button("取消关注", key=f"unfollow_list_{f_user['id']}"):
+                             UserService.unfollow_user(user['id'], f_user['id'])
+                             st.rerun()
+                    st.divider()
+            else:
+                st.info("还没有关注任何人")
+
+        with tab_followers:
+            followers = UserService.get_followers(user['id'])
+            if followers:
+                for f_user in followers:
+                    c1, c2, c3 = st.columns([1, 4, 2])
+                    with c1:
+                        if f_user.get('avatar_url') and os.path.exists(f_user['avatar_url']):
+                             st.image(f_user['avatar_url'], width=50)
+                        else:
+                             st.markdown("👤")
+                    with c2:
+                         st.write(f"**{f_user['nickname']}**")
+                    with c3:
+                         # Check if I follow them back?
+                         if UserService.is_following(user['id'], f_user['id']):
+                             st.button("互相关注", disabled=True, key=f"mutual_{f_user['id']}")
+                         else:
+                             if st.button("回粉", key=f"follow_back_{f_user['id']}", type="primary"):
+                                 UserService.follow_user(user['id'], f_user['id'])
+                                 st.rerun()
+                    st.divider()
+            else:
+                st.info("还没有粉丝")
 
     elif selected == "登录/注册":
         # Reset the show login flag so we don't get stuck here if user clicks menu elsewhere later

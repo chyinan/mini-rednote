@@ -34,6 +34,14 @@ export const getUserCollectedPosts = (userId) => api.get(`/posts/user/${userId}/
 export const updateProfile = (formData) => api.put('/user/profile', formData)
 export const getPublicUserProfile = (userId) => api.get(`/users/${userId}`)
 
+// User Follow APIs
+export const followUser = (targetUserId, currentUserId) => api.post(`/users/${targetUserId}/follow`, { user_id: currentUserId })
+export const unfollowUser = (targetUserId, currentUserId) => api.post(`/users/${targetUserId}/unfollow`, { user_id: currentUserId })
+export const checkIsFollowing = (targetUserId, currentUserId) => api.get(`/users/${targetUserId}/is_following`, { params: { current_user_id: currentUserId } })
+export const getFollowers = (userId) => api.get(`/users/${userId}/followers`)
+export const getFollowing = (userId) => api.get(`/users/${userId}/following`)
+export const getFollowCounts = (userId) => api.get(`/users/${userId}/counts`)
+
 // New APIs for delete and visibility
 export const deletePost = (postId, userId) => api.delete(`/posts/${postId}`, { data: { user_id: userId } })
 export const updatePostVisibility = (postId, userId, isPrivate) => api.put(`/posts/${postId}/visibility`, { user_id: userId, is_private: isPrivate })

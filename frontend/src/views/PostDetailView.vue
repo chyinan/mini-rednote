@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getPostDetail, getComments, addComment, toggleLike, toggleCollection, getImageUrl } from '../api'
+import { getPostDetail, getComments, addComment, toggleLike, toggleCollection, getImageUrl, followUser, unfollowUser, checkIsFollowing } from '../api'
 import { useUserStore } from '../stores/user'
 import { useTransitionStore } from '../stores/transition'
 import { ElMessage } from 'element-plus'
@@ -16,6 +16,7 @@ const comments = ref([])
 const newComment = ref('')
 const isLiked = ref(false)
 const isCollected = ref(false)
+const isFollowing = ref(false)
 const containerRef = ref(null)
 
 // Animation states
@@ -85,7 +86,7 @@ const fullScreenImageStyle = computed(() => ({
   transition: isDragging.value ? 'none' : 'transform 0.1s ease-out'
 }))
 
-const postId = route.params.id
+const postId = route.params.postId || route.params.id
 
 const isLoggedIn = computed(() => !!userStore.user)
 
@@ -130,6 +131,16 @@ onMounted(async () => {
     // Initialize states from backend
     isLiked.value = !!post.value.is_liked
     isCollected.value = !!post.value.is_collected
+    
+    // Check follow status
+    if (userStore.user && post.value.user_id !== userStore.user.id) {
+       try {
+         const followRes = await checkIsFollowing(post.value.user_id, userStore.user.id)
+         isFollowing.value = followRes.data.is_following
+       } catch (e) {
+         console.error('Check follow failed', e)
+       }
+    }
     
     fetchComments()
 
@@ -201,6 +212,40 @@ const fetchComments = async () => {
     comments.value = res.data
   } catch (e) {
     console.error(e)
+  }
+}
+
+const handleFollow = async () => {
+  if (!isLoggedIn.value) {
+    ElMessage.warning('请先登录')
+    router.push('/login')
+    return
+  }
+  
+  try {
+    const res = await followUser(post.value.user_id, userStore.user.id)
+    if (res.data.success) {
+      isFollowing.value = true
+      ElMessage.success('关注成功')
+    } else {
+      ElMessage.error(res.data.message)
+    }
+  } catch (e) {
+    ElMessage.error('关注失败')
+  }
+}
+
+const handleUnfollow = async () => {
+  try {
+    const res = await unfollowUser(post.value.user_id, userStore.user.id)
+    if (res.data.success) {
+      isFollowing.value = false
+      ElMessage.success('已取消关注')
+    } else {
+      ElMessage.error(res.data.message)
+    }
+  } catch (e) {
+    ElMessage.error('取消关注失败')
   }
 }
 
@@ -380,11 +425,10 @@ const closeDetail = () => {
         
         <!-- Main Image -->
         <div class="rounded-xl overflow-hidden aspect-[4/3] bg-gray-50 relative">
-           <img 
-            :src="getImageUrl(post?.image_url)" 
-            class="w-full h-full object-cover"
-            crossOrigin="anonymous"
-          >
+           <div 
+            class="w-full h-full bg-cover bg-center bg-no-repeat"
+            :style="{ backgroundImage: `url(${getImageUrl(post?.image_url)})` }"
+          ></div>
         </div>
         
         <!-- Content -->
@@ -448,15 +492,21 @@ const closeDetail = () => {
       <div class="w-full md:w-[40%] flex flex-col bg-white h-full">
         <!-- Header: Author -->
         <div class="p-5 border-b border-gray-50 flex items-center justify-between flex-shrink-0">
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity" @click="router.push(`/user/${post.user_id}`)">
             <img 
               :src="getImageUrl(post.avatar_url) || 'https://via.placeholder.com/40'" 
               class="w-10 h-10 rounded-full object-cover border border-gray-100"
             >
             <span class="font-medium text-gray-900">{{ post.nickname }}</span>
           </div>
-          <button class="px-5 py-1.5 rounded-full border border-xhs-red text-xhs-red text-sm font-medium hover:bg-red-50 transition-colors">
-            关注
+          
+          <button 
+            v-if="!userStore.user || userStore.user.id !== post.user_id"
+            @click="isFollowing ? handleUnfollow() : handleFollow()"
+            class="px-5 py-1.5 rounded-full text-sm font-medium transition-colors"
+            :class="isFollowing ? 'border border-gray-200 text-gray-500 hover:bg-gray-50' : 'border border-xhs-red text-xhs-red hover:bg-red-50'"
+          >
+            {{ isFollowing ? '已关注' : '关注' }}
           </button>
         </div>
 

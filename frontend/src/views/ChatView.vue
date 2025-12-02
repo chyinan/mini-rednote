@@ -15,6 +15,43 @@ const newMessage = ref('')
 const loading = ref(true)
 const messagesContainer = ref(null)
 const pollingInterval = ref(null)
+const showEmojiPicker = ref(false)
+const emojiPickerRef = ref(null)
+const emojiButtonRef = ref(null)
+
+const handleClickOutside = (event) => {
+  if (showEmojiPicker.value && 
+      emojiPickerRef.value && 
+      !emojiPickerRef.value.contains(event.target) && 
+      emojiButtonRef.value && 
+      !emojiButtonRef.value.contains(event.target)) {
+    showEmojiPicker.value = false
+  }
+}
+
+const emojis = [
+  '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '☺️', '😊',
+  '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙',
+  '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎',
+  '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️',
+  '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡',
+  '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗',
+  '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯',
+  '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷',
+  '👋', '🤚', '🖐', '✋', '🖖', '👌', '🤏', '✌️', '🤞', '🤟',
+  '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎',
+  '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏',
+  '💅', '🤳', '💪', '🦾', '🦿', '🦵', '🦶', '👂', '🦻', '👃',
+  '🧠', '🫀', '🫁', '🦷', '🦴', '👀', '👁', '👅', '👄', '💋',
+  '👶', '👧', '🧒', '👦', '👩', '🧑', '👨', '👱‍♀️', '👱‍♂️', '🧔',
+  '🌹', '🥀', '🌺', '🌻', '🌼', '🌷', '🌱', '🌿', '🍀', '🍁',
+  '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯',
+  '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔'
+]
+
+const addEmoji = (emoji) => {
+  newMessage.value += emoji
+}
 
 const targetUserId = route.params.id
 
@@ -87,10 +124,13 @@ onMounted(async () => {
   
   // Simple polling for new messages every 3 seconds
   pollingInterval.value = setInterval(fetchMessages, 3000)
+  
+  document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
   if (pollingInterval.value) clearInterval(pollingInterval.value)
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
@@ -136,18 +176,45 @@ onUnmounted(() => {
     </div>
 
     <!-- Input -->
-    <div class="bg-white border-t border-gray-200 p-4 flex-shrink-0">
-      <div class="flex gap-3 max-w-4xl mx-auto">
-        <input 
-          v-model="newMessage"
-          type="text" 
-          class="flex-1 bg-gray-100 rounded-full px-4 py-2.5 text-sm focus:bg-white focus:ring-1 focus:ring-xhs-red focus:outline-none transition-all"
-          placeholder="发私信..."
-          @keyup.enter="handleSend"
-        >
+    <div class="bg-white border-t border-gray-200 p-4 flex-shrink-0" @click.self="showEmojiPicker = false">
+      <div class="flex gap-3 max-w-4xl mx-auto relative">
+        <!-- Emoji Picker -->
+        <transition name="emoji-fade">
+          <div ref="emojiPickerRef" v-if="showEmojiPicker" class="absolute bottom-full right-16 mb-4 bg-white rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.1)] border border-gray-100 p-4 w-80 grid grid-cols-8 gap-2 h-64 overflow-y-auto z-50 custom-scrollbar">
+              <button 
+                v-for="emoji in emojis" 
+                :key="emoji" 
+                @click="addEmoji(emoji)" 
+                class="text-2xl hover:bg-gray-50 rounded-lg p-1 transition-colors flex items-center justify-center aspect-square"
+              >
+                {{ emoji }}
+              </button>
+          </div>
+        </transition>
+
+        <div class="flex-1 relative">
+          <input 
+            v-model="newMessage"
+            type="text" 
+            class="w-full bg-gray-100 rounded-full pl-4 pr-12 py-2.5 text-sm focus:bg-white focus:ring-1 focus:ring-xhs-red focus:outline-none transition-all"
+            placeholder="发私信..."
+            @keyup.enter="handleSend"
+            @focus="showEmojiPicker = false"
+          >
+          <button 
+            ref="emojiButtonRef"
+            @click="showEmojiPicker = !showEmojiPicker" 
+            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors p-1"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.182 15.182a4.5 4.5 0 0 1-6.364 0M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75Zm-.375 0h.008v.015h-.008V9.75Z" />
+            </svg>
+          </button>
+        </div>
+        
         <button 
           @click="handleSend"
-          class="bg-xhs-red text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          class="bg-xhs-red text-white px-5 py-2 rounded-full text-sm font-medium hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
           :disabled="!newMessage.trim()"
         >
           发送
@@ -156,4 +223,28 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #e5e7eb;
+  border-radius: 20px;
+}
+
+.emoji-fade-enter-active,
+.emoji-fade-leave-active {
+  transition: all 0.2s ease;
+}
+
+.emoji-fade-enter-from,
+.emoji-fade-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+</style>
 

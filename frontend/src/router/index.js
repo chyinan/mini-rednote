@@ -33,12 +33,26 @@ const router = createRouter({
     {
       path: '/profile',
       name: 'profile',
-      component: () => import('../views/ProfileView.vue')
+      component: () => import('../views/ProfileView.vue'),
+      children: [
+        {
+          path: 'explore/:postId',
+          name: 'profile-post-detail',
+          component: () => import('../views/PostDetailView.vue')
+        }
+      ]
     },
     {
       path: '/user/:id',
       name: 'user-profile',
-      component: () => import('../views/ProfileView.vue')
+      component: () => import('../views/ProfileView.vue'),
+      children: [
+        {
+          path: 'explore/:postId',
+          name: 'user-profile-post-detail',
+          component: () => import('../views/PostDetailView.vue')
+        }
+      ]
     },
     {
       path: '/messages',

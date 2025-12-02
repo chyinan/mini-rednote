@@ -1,7 +1,7 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getPostDetail, getComments, addComment, toggleLike, toggleCollection, getImageUrl, followUser, unfollowUser, checkIsFollowing } from '../api'
+import { getPostDetail, getComments, addComment, toggleLike, toggleCollection, getImageUrl, followUser, unfollowUser, checkIsFollowing, toggleCommentLike } from '../api'
 import { useUserStore } from '../stores/user'
 import { useTransitionStore } from '../stores/transition'
 import { ElMessage } from 'element-plus'
@@ -18,6 +18,7 @@ const isLiked = ref(false)
 const isCollected = ref(false)
 const isFollowing = ref(false)
 const containerRef = ref(null)
+const isLoading = ref(true)
 
 // Animation states
 const isAnimating = ref(false)
@@ -86,20 +87,39 @@ const fullScreenImageStyle = computed(() => ({
   transition: isDragging.value ? 'none' : 'transform 0.1s ease-out'
 }))
 
-const postId = route.params.postId || route.params.id
-
 const isLoggedIn = computed(() => !!userStore.user)
 
 onMounted(async () => {
-  if (!postId) {
+  // Debug log
+  console.log('PostDetailView mounted, route params:', route.params)
+  
+  await loadPostData()
+})
+
+// Listen to route changes to reload data if ID changes
+watch(() => route.params.id, (newId) => {
+    if (newId) loadPostData()
+})
+
+const loadPostData = async () => {
+  const currentPostId = route.params.id || route.params.postId
+  console.log('Loading post data for ID:', currentPostId)
+
+  if (!currentPostId) {
+    console.error('No post ID found')
+    // Don't redirect back immediately, let user see error
     ElMessage.error('帖子ID无效')
-    router.back()
     return
   }
 
+  // Reset state
+  post.value = null
+  showContent.value = false
+  isLoading.value = true
+
   if (initialRect.value) {
     isAnimating.value = true
-    // Initial state: position at the source image
+    // ... (keep existing animation logic init)
     animStyle.value = {
       position: 'fixed',
       top: `${initialRect.value.top}px`,
@@ -112,27 +132,25 @@ onMounted(async () => {
       objectFit: 'cover'
     }
   } else {
+    // Directly show content placeholder if no animation
     showContent.value = true
   }
   
   try {
-    // Pass user ID if logged in to check like/collection status
     const userId = userStore.user ? userStore.user.id : null
-    const postRes = await getPostDetail(postId, userId)
+    console.log('Fetching details from API...')
+    const postRes = await getPostDetail(currentPostId, userId)
+    console.log('API Response:', postRes)
     
     if (!postRes || !postRes.data) {
-      ElMessage.error('帖子不存在或已被删除')
-      router.back()
-      return
+      throw new Error('No data returned')
     }
     
     post.value = postRes.data
     
-    // Initialize states from backend
     isLiked.value = !!post.value.is_liked
     isCollected.value = !!post.value.is_collected
     
-    // Check follow status
     if (userStore.user && post.value.user_id !== userStore.user.id) {
        try {
          const followRes = await checkIsFollowing(post.value.user_id, userStore.user.id)
@@ -142,76 +160,86 @@ onMounted(async () => {
        }
     }
     
-    fetchComments()
+    fetchComments(currentPostId)
 
-    // Start Animation after post is loaded and we have the image URL
+    // Animation logic after load
     if (initialRect.value) {
-      // Force reflow
-      await nextTick()
-      setTimeout(() => {
-        // Target state: Centered
-        // We need to calculate the target position relative to the window
-        // A 60% width container centered
-        const windowWidth = window.innerWidth
-        const windowHeight = window.innerHeight
-        const targetWidth = Math.min(windowWidth * 0.8, 1152) * 0.6 // 60% of max-w-6xl
-        // Actually simpler: we can animate to the final modal image position if we know it.
-        // Or we just animate to center and fade in the modal.
-        // Let's animate to approximately where the left image column will be.
-        
-        // Simplified: Animate to center-ish, then swap.
-        // Better: Use a layout that matches the modal.
-        
-        // Let's try to calculate the target rect of the image container in the modal
-        // Modal max-w-6xl = 1152px. Image is 60% width.
-        const modalWidth = Math.min(windowWidth, 1152)
-        const modalHeight = windowHeight * 0.85
-        const imgWidth = windowWidth >= 768 ? modalWidth * 0.6 : modalWidth
-        const imgHeight = modalHeight
-
-        const targetLeft = windowWidth >= 768 ? (windowWidth - modalWidth) / 2 : 0
-        const targetTop = (windowHeight - modalHeight) / 2
-        
-        animStyle.value = {
-          position: 'fixed',
-          top: `${targetTop}px`,
-          left: `${targetLeft}px`,
-          width: `${imgWidth}px`,
-          height: `${imgHeight}px`,
-          transition: 'all 0.3s cubic-bezier(0.2, 0, 0.2, 1)',
-          zIndex: 100,
-          borderRadius: '1.5rem 0 0 1.5rem', // Match modal radius
-          objectFit: 'contain',
-          backgroundColor: '#000'
-        }
-
+       await nextTick()
         setTimeout(() => {
-          isAnimating.value = false
-          showContent.value = true
-          transitionStore.setRect(null) // Clear
-        }, 300)
-      }, 50)
+            const windowWidth = window.innerWidth
+            const windowHeight = window.innerHeight
+            const modalWidth = Math.min(windowWidth, 1152)
+            const modalHeight = windowHeight * 0.85
+            const imgWidth = windowWidth >= 768 ? modalWidth * 0.6 : modalWidth
+            const imgHeight = modalHeight
+            const targetLeft = windowWidth >= 768 ? (windowWidth - modalWidth) / 2 : 0
+            const targetTop = (windowHeight - modalHeight) / 2
+            
+            animStyle.value = {
+            position: 'fixed',
+            top: `${targetTop}px`,
+            left: `${targetLeft}px`,
+            width: `${imgWidth}px`,
+            height: `${imgHeight}px`,
+            transition: 'all 0.3s cubic-bezier(0.2, 0, 0.2, 1)',
+            zIndex: 100,
+            borderRadius: '1.5rem 0 0 1.5rem',
+            objectFit: 'contain',
+            backgroundColor: '#000'
+            }
+
+            setTimeout(() => {
+            isAnimating.value = false
+            showContent.value = true
+            transitionStore.setRect(null)
+            }, 300)
+        }, 50)
+    } else {
+        // If no animation, just ensure content is shown
+        showContent.value = true
     }
 
   } catch (e) {
     console.error('加载笔记失败:', e)
-    // ... error handling
-    if (e.response?.status === 404) {
-      setTimeout(() => router.back(), 1500)
-    }
+    ElMessage.error('加载失败，请重试')
+  } finally {
+    isLoading.value = false
   }
-})
+}
 
 onUnmounted(() => {
   document.body.style.overflow = ''
 })
 
-const fetchComments = async () => {
+const fetchComments = async (pid) => {
+  const id = pid || post.value?.id
+  if (!id) return
   try {
-    const res = await getComments(postId)
+    // Pass user ID if logged in
+    const userId = userStore.user ? userStore.user.id : null
+    const res = await getComments(id, userId)
     comments.value = res.data
   } catch (e) {
     console.error(e)
+  }
+}
+
+const handleCommentLike = async (comment) => {
+  if (!isLoggedIn.value) {
+    ElMessage.warning('请先登录')
+    return
+  }
+  
+  try {
+    const res = await toggleCommentLike(comment.id, userStore.user.id)
+    if (res.data.success) {
+        comment.is_liked = !comment.is_liked
+        comment.likes_count = (comment.likes_count || 0) + (comment.is_liked ? 1 : -1)
+    } else {
+        ElMessage.error(res.data.message)
+    }
+  } catch (e) {
+    ElMessage.error('操作失败')
   }
 }
 
@@ -250,13 +278,14 @@ const handleUnfollow = async () => {
 }
 
 const handleLike = async () => {
-  // ... (keep existing logic)
   if (!isLoggedIn.value) {
     ElMessage.warning('请先登录')
     return
   }
+  const currentPostId = route.params.id || route.params.postId
+  if (!currentPostId) return
   try {
-    const res = await toggleLike(postId, userStore.user.id)
+    const res = await toggleLike(currentPostId, userStore.user.id)
     if (res.data.success) {
       isLiked.value = !isLiked.value
       post.value.likes_count += isLiked.value ? 1 : -1
@@ -268,13 +297,14 @@ const handleLike = async () => {
 }
 
 const handleCollect = async () => {
-  // ... (keep existing logic)
   if (!isLoggedIn.value) {
     ElMessage.warning('请先登录')
     return
   }
+  const currentPostId = route.params.id || route.params.postId
+  if (!currentPostId) return
   try {
-    const res = await toggleCollection(postId, userStore.user.id)
+    const res = await toggleCollection(currentPostId, userStore.user.id)
     if (res.data.success) {
       isCollected.value = !isCollected.value
       ElMessage.success(isCollected.value ? '收藏成功' : '已取消收藏')
@@ -315,9 +345,10 @@ const handleShare = async () => {
 
 const downloadImage = () => {
   if (!generatedImage.value) return
+  const currentPostId = route.params.id || route.params.postId || 'unknown'
   const link = document.createElement('a')
   link.href = generatedImage.value
-  link.download = `xhs-share-${postId}.jpg`
+  link.download = `xhs-share-${currentPostId}.jpg`
   link.click()
 }
 
@@ -327,9 +358,10 @@ const handleComment = async () => {
     ElMessage.warning('请先登录')
     return
   }
-  
+  const currentPostId = route.params.id || route.params.postId
+  if (!currentPostId) return
   try {
-    const res = await addComment(postId, userStore.user.id, newComment.value)
+    const res = await addComment(currentPostId, userStore.user.id, newComment.value)
     if (res.data.success) {
       ElMessage.success('评论成功')
       newComment.value = ''
@@ -523,14 +555,23 @@ const closeDetail = () => {
             
             <!-- Comment List -->
             <div class="space-y-5">
-              <div v-for="comment in comments" :key="comment.id" class="flex gap-3">
+              <div v-for="comment in comments" :key="comment.id" class="flex gap-3 group">
                 <img 
                   :src="getImageUrl(comment.avatar_url) || 'https://via.placeholder.com/32'" 
-                  class="w-8 h-8 rounded-full object-cover border border-gray-100 flex-shrink-0"
+                  class="w-8 h-8 rounded-full object-cover border border-gray-100 flex-shrink-0 cursor-pointer"
+                  @click="router.push(`/user/${comment.user_id}`)"
                 >
                 <div class="flex-1">
-                  <div class="flex items-baseline gap-2 mb-1">
-                    <span class="text-sm font-medium text-gray-600">{{ comment.nickname }}</span>
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-sm font-medium text-gray-600 cursor-pointer hover:text-gray-900" @click="router.push(`/user/${comment.user_id}`)">{{ comment.nickname }}</span>
+                    
+                    <!-- Comment Like Button -->
+                    <div class="flex flex-col items-center gap-0.5 cursor-pointer" @click="handleCommentLike(comment)">
+                      <svg xmlns="http://www.w3.org/2000/svg" :fill="comment.is_liked ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 transition-colors" :class="comment.is_liked ? 'text-xhs-red' : 'text-gray-400 group-hover:text-gray-600'">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
+                      </svg>
+                      <span class="text-xs text-gray-400" v-if="comment.likes_count > 0">{{ comment.likes_count }}</span>
+                    </div>
                   </div>
                   <p class="text-sm text-gray-800 leading-normal">{{ comment.content }}</p>
                 </div>

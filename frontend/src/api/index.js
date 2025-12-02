@@ -18,9 +18,10 @@ export const getPostDetail = (id, userId = null) => {
   }
   return api.get(`/posts/${id}`, { params })
 }
-export const getComments = (id) => api.get(`/posts/${id}/comments`)
+export const getComments = (id, userId = null) => api.get(`/posts/${id}/comments`, { params: { user_id: userId } })
 export const addComment = (postId, userId, content) => api.post(`/posts/${postId}/comments`, { user_id: userId, content })
 export const toggleLike = (postId, userId) => api.post(`/posts/${postId}/like`, { user_id: userId })
+export const toggleCommentLike = (commentId, userId) => api.post(`/comments/${commentId}/like`, { user_id: userId })
 export const toggleCollection = (postId, userId) => api.post(`/posts/${postId}/collect`, { user_id: userId })
 export const getUserPosts = (userId, currentUserId = null) => {
   const params = {}
@@ -38,8 +39,8 @@ export const getPublicUserProfile = (userId) => api.get(`/users/${userId}`)
 export const followUser = (targetUserId, currentUserId) => api.post(`/users/${targetUserId}/follow`, { user_id: currentUserId })
 export const unfollowUser = (targetUserId, currentUserId) => api.post(`/users/${targetUserId}/unfollow`, { user_id: currentUserId })
 export const checkIsFollowing = (targetUserId, currentUserId) => api.get(`/users/${targetUserId}/is_following`, { params: { current_user_id: currentUserId } })
-export const getFollowers = (userId) => api.get(`/users/${userId}/followers`)
-export const getFollowing = (userId) => api.get(`/users/${userId}/following`)
+export const getFollowers = (userId, currentUserId = null) => api.get(`/users/${userId}/followers`, { params: { current_user_id: currentUserId } })
+export const getFollowing = (userId, currentUserId = null) => api.get(`/users/${userId}/following`, { params: { current_user_id: currentUserId } })
 export const getFollowCounts = (userId) => api.get(`/users/${userId}/counts`)
 
 // New APIs for delete and visibility
@@ -53,6 +54,10 @@ export const getConversation = (otherUserId, userId, limit = 50, offset = 0) =>
   api.get(`/messages/conversation/${otherUserId}`, { params: { user_id: userId, limit, offset } })
 export const markMessagesRead = (userId, senderId) => api.put('/messages/read', { user_id: userId, sender_id: senderId })
 export const getUnreadCount = (userId) => api.get('/messages/unread/count', { params: { user_id: userId } })
+
+// Notification APIs
+export const getNotifications = (userId) => api.get('/notifications', { params: { user_id: userId } })
+export const markNotificationsRead = (userId) => api.put('/notifications/read', { user_id: userId })
 
 export const getImageUrl = (path) => {
   if (!path) return ''

@@ -143,20 +143,71 @@ class MessageService:
 
     @staticmethod
     def get_total_unread_count(user_id: int):
-        """Get total count of unread messages for a user."""
+        """Get total count of unread messages and notifications for a user."""
         conn = db.get_connection()
         if not conn:
             return 0
 
         try:
             with conn.cursor() as cursor:
-                sql = "SELECT COUNT(*) as count FROM messages WHERE receiver_id = %s AND is_read = FALSE"
-                cursor.execute(sql, (user_id,))
-                result = cursor.fetchone()
-                return result['count'] if result else 0
+                # Count unread messages
+                msg_sql = "SELECT COUNT(*) as count FROM messages WHERE receiver_id = %s AND is_read = FALSE"
+                cursor.execute(msg_sql, (user_id,))
+                msg_result = cursor.fetchone()
+                msg_count = msg_result['count'] if msg_result else 0
+
+                # Count unread notifications
+                notify_sql = "SELECT COUNT(*) as count FROM notifications WHERE receiver_id = %s AND is_read = FALSE"
+                cursor.execute(notify_sql, (user_id,))
+                notify_result = cursor.fetchone()
+                notify_count = notify_result['count'] if notify_result else 0
+
+                return msg_count + notify_count
         except Exception as e:
             print(f"Error getting unread count: {e}")
             return 0
+
+    @staticmethod
+    def get_notifications(user_id: int):
+        """Get notifications for a user."""
+        conn = db.get_connection()
+        if not conn:
+            return []
+
+        try:
+            with conn.cursor() as cursor:
+                sql = """
+                    SELECT n.*, 
+                           u.nickname as sender_name, u.avatar_url as sender_avatar,
+                           p.title as post_title, p.image_url as post_image
+                    FROM notifications n
+                    JOIN users u ON n.sender_id = u.id
+                    LEFT JOIN posts p ON n.target_id = p.id
+                    WHERE n.receiver_id = %s
+                    ORDER BY n.created_at DESC
+                """
+                cursor.execute(sql, (user_id,))
+                notifications = cursor.fetchall()
+                return notifications
+        except Exception as e:
+            print(f"Error fetching notifications: {e}")
+            return []
+
+    @staticmethod
+    def mark_notifications_read(user_id: int):
+        """Mark all notifications as read."""
+        conn = db.get_connection()
+        if not conn:
+            return False
+
+        try:
+            with conn.cursor() as cursor:
+                sql = "UPDATE notifications SET is_read = TRUE WHERE receiver_id = %s"
+                cursor.execute(sql, (user_id,))
+            return True
+        except Exception as e:
+            print(f"Error marking notifications read: {e}")
+            return False
 
 
 

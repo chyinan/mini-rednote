@@ -58,7 +58,14 @@ const router = createRouter({
       path: '/messages',
       name: 'messages',
       component: () => import('../views/MessageIndexView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: true },
+      children: [
+        {
+          path: 'post/:postId',
+          name: 'message-post-detail',
+          component: () => import('../views/PostDetailView.vue')
+        }
+      ]
     },
     {
       path: '/messages/:id',

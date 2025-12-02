@@ -163,13 +163,22 @@ async def toggle_collection(post_id: int, user_id_data: InteractionCreate):
     return {"success": success, "message": msg}
 
 @app.get("/api/posts/{post_id}/comments")
-async def get_comments(post_id: int):
-    return PostService.get_comments(post_id)
+async def get_comments(post_id: int, user_id: Optional[int] = None):
+    return PostService.get_comments(post_id, user_id)
 
 @app.post("/api/posts/{post_id}/comments")
 async def add_comment(post_id: int, comment_data: CommentCreate):
     success = PostService.add_comment(comment_data.user_id, post_id, comment_data.content)
     return {"success": success}
+
+@app.post("/api/comments/{comment_id}/like")
+async def toggle_comment_like(comment_id: int, user_id_data: InteractionCreate):
+    user_id = user_id_data.user_id
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User ID required")
+        
+    success, msg = PostService.toggle_comment_like(user_id, comment_id)
+    return {"success": success, "message": msg}
 
 # --- Static Files ---
 @app.get("/assets/{filename}")
@@ -208,13 +217,13 @@ async def is_following(user_id: int, current_user_id: int):
     return {"success": True, "is_following": is_following}
 
 @app.get("/api/users/{user_id}/followers")
-async def get_followers(user_id: int):
-    followers = UserService.get_followers(user_id)
+async def get_followers(user_id: int, current_user_id: Optional[int] = None):
+    followers = UserService.get_followers(user_id, current_user_id)
     return {"success": True, "followers": followers}
 
 @app.get("/api/users/{user_id}/following")
-async def get_following(user_id: int):
-    following = UserService.get_following(user_id)
+async def get_following(user_id: int, current_user_id: Optional[int] = None):
+    following = UserService.get_following(user_id, current_user_id)
     return {"success": True, "following": following}
 
 @app.get("/api/users/{user_id}/counts")
@@ -247,6 +256,17 @@ async def mark_messages_read(data: MarkRead):
 async def get_unread_count(user_id: int):
     count = MessageService.get_total_unread_count(user_id)
     return {"success": True, "count": count}
+
+@app.get("/api/notifications")
+async def get_notifications(user_id: int):
+    notifications = MessageService.get_notifications(user_id)
+    return {"success": True, "notifications": notifications}
+
+@app.put("/api/notifications/read")
+async def mark_notifications_read(data: InteractionCreate):
+    # Reusing InteractionCreate just for user_id
+    success = MessageService.mark_notifications_read(data.user_id)
+    return {"success": success}
 
 if __name__ == "__main__":
     import uvicorn

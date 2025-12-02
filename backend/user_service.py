@@ -57,7 +57,7 @@ class UserService:
             return False
 
     @staticmethod
-    def get_followers(user_id):
+    def get_followers(user_id, current_user_id=None):
         """Get list of followers for a user."""
         conn = db.get_connection()
         if not conn:
@@ -65,21 +65,34 @@ class UserService:
             
         try:
             with conn.cursor() as cursor:
-                sql = """
-                    SELECT u.id, u.username, u.nickname, u.avatar_url
-                    FROM follows f
-                    JOIN users u ON f.follower_id = u.id
-                    WHERE f.followed_id = %s
-                    ORDER BY f.created_at DESC
-                """
-                cursor.execute(sql, (user_id,))
+                if current_user_id:
+                    sql = """
+                        SELECT u.id, u.username, u.nickname, u.avatar_url,
+                        CASE WHEN f2.id IS NOT NULL THEN 1 ELSE 0 END as is_following
+                        FROM follows f
+                        JOIN users u ON f.follower_id = u.id
+                        LEFT JOIN follows f2 ON f2.follower_id = %s AND f2.followed_id = u.id
+                        WHERE f.followed_id = %s
+                        ORDER BY f.created_at DESC
+                    """
+                    cursor.execute(sql, (current_user_id, user_id))
+                else:
+                    sql = """
+                        SELECT u.id, u.username, u.nickname, u.avatar_url,
+                        0 as is_following
+                        FROM follows f
+                        JOIN users u ON f.follower_id = u.id
+                        WHERE f.followed_id = %s
+                        ORDER BY f.created_at DESC
+                    """
+                    cursor.execute(sql, (user_id,))
                 return cursor.fetchall()
         except Exception as e:
             print(f"Error fetching followers: {e}")
             return []
 
     @staticmethod
-    def get_following(user_id):
+    def get_following(user_id, current_user_id=None):
         """Get list of users a user is following."""
         conn = db.get_connection()
         if not conn:
@@ -87,14 +100,27 @@ class UserService:
             
         try:
             with conn.cursor() as cursor:
-                sql = """
-                    SELECT u.id, u.username, u.nickname, u.avatar_url
-                    FROM follows f
-                    JOIN users u ON f.followed_id = u.id
-                    WHERE f.follower_id = %s
-                    ORDER BY f.created_at DESC
-                """
-                cursor.execute(sql, (user_id,))
+                if current_user_id:
+                    sql = """
+                        SELECT u.id, u.username, u.nickname, u.avatar_url,
+                        CASE WHEN f2.id IS NOT NULL THEN 1 ELSE 0 END as is_following
+                        FROM follows f
+                        JOIN users u ON f.followed_id = u.id
+                        LEFT JOIN follows f2 ON f2.follower_id = %s AND f2.followed_id = u.id
+                        WHERE f.follower_id = %s
+                        ORDER BY f.created_at DESC
+                    """
+                    cursor.execute(sql, (current_user_id, user_id))
+                else:
+                    sql = """
+                        SELECT u.id, u.username, u.nickname, u.avatar_url,
+                        0 as is_following
+                        FROM follows f
+                        JOIN users u ON f.followed_id = u.id
+                        WHERE f.follower_id = %s
+                        ORDER BY f.created_at DESC
+                    """
+                    cursor.execute(sql, (user_id,))
                 return cursor.fetchall()
         except Exception as e:
             print(f"Error fetching following: {e}")

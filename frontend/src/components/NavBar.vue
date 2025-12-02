@@ -3,12 +3,31 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useUserStore } from '../stores/user'
 import { useRouter } from 'vue-router'
 import { getImageUrl, getUnreadCount } from '../api'
+import { ElMessageBox } from 'element-plus'
 
 const userStore = useUserStore()
 const router = useRouter()
 const search = ref('')
 const unreadCount = ref(0)
 const pollInterval = ref(null)
+
+const handleLogout = () => {
+  ElMessageBox.confirm(
+    '确定要退出登录吗？',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      center: true,
+      showIcon: false,
+      customClass: 'logout-confirm-dialog'
+    }
+  ).then(() => {
+    userStore.logout()
+    router.push('/login')
+  }).catch(() => {
+    // cancel
+  })
+}
 
 const handleSearch = () => {
   router.push({
@@ -86,7 +105,7 @@ onUnmounted(() => {
           <img :src="getImageUrl(userStore.user.avatar_url) || 'https://via.placeholder.com/32'" class="w-9 h-9 rounded-full object-cover border border-gray-100">
         </div>
         
-        <button @click="userStore.logout(); router.push('/login')" class="text-gray-400 hover:text-xhs-red transition-colors">
+        <button @click="handleLogout" class="text-gray-400 hover:text-xhs-red transition-colors" title="退出登录">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
           </svg>
@@ -100,3 +119,12 @@ onUnmounted(() => {
     </div>
   </nav>
 </template>
+
+<style>
+.logout-confirm-dialog .el-message-box__header {
+  text-align: center;
+}
+.logout-confirm-dialog .el-message-box__title {
+  justify-content: center;
+}
+</style>

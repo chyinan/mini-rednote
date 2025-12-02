@@ -226,6 +226,30 @@ class PostService:
                     cursor.execute(insert_sql, (user_id, post_id))
                     update_sql = "UPDATE posts SET likes_count = likes_count + 1 WHERE id = %s"
                     cursor.execute(update_sql, (post_id,))
+
+                    # Notification: Send a message to the post owner
+                    try:
+                        # Get post owner and title
+                        post_sql = "SELECT user_id, title FROM posts WHERE id = %s"
+                        cursor.execute(post_sql, (post_id,))
+                        post = cursor.fetchone()
+
+                        if post and post['user_id'] != user_id:
+                            owner_id = post['user_id']
+                            title = post['title']
+                            content = f"赞了你的帖子《{title}》"
+                            
+                            # Insert notification
+                            content = f"赞了你的帖子《{title}》"
+                            notify_sql = """
+                                INSERT INTO notifications (receiver_id, sender_id, type, target_id, content) 
+                                VALUES (%s, %s, 'like_post', %s, %s)
+                            """
+                            cursor.execute(notify_sql, (owner_id, user_id, post_id, content))
+                    except Exception as e:
+                        print(f"Error sending like notification: {e}")
+                        # Continue even if notification fails
+
                     return True, "Liked"
         except Exception as e:
             return False, str(e)
@@ -274,7 +298,7 @@ class PostService:
             return False
 
     @staticmethod
-    def get_comments(post_id):
+    def get_comments(post_id, current_user_id=None):
         """Get comments for a post."""
         conn = db.get_connection()
         if not conn:
@@ -282,18 +306,61 @@ class PostService:
 
         try:
             with conn.cursor() as cursor:
-                sql = """
-                    SELECT c.*, u.nickname, u.avatar_url 
-                    FROM comments c 
-                    JOIN users u ON c.user_id = u.id 
-                    WHERE c.post_id = %s 
-                    ORDER BY c.created_at ASC
-                """
-                cursor.execute(sql, (post_id,))
+                if current_user_id:
+                    sql = """
+                        SELECT c.*, u.nickname, u.avatar_url,
+                        CASE WHEN cl.id IS NOT NULL THEN 1 ELSE 0 END as is_liked
+                        FROM comments c 
+                        JOIN users u ON c.user_id = u.id 
+                        LEFT JOIN comment_likes cl ON c.id = cl.comment_id AND cl.user_id = %s
+                        WHERE c.post_id = %s 
+                        ORDER BY c.created_at ASC
+                    """
+                    cursor.execute(sql, (current_user_id, post_id))
+                else:
+                    sql = """
+                        SELECT c.*, u.nickname, u.avatar_url, 0 as is_liked
+                        FROM comments c 
+                        JOIN users u ON c.user_id = u.id 
+                        WHERE c.post_id = %s 
+                        ORDER BY c.created_at ASC
+                    """
+                    cursor.execute(sql, (post_id,))
                 return cursor.fetchall()
         except Exception as e:
             print(f"Error fetching comments: {e}")
             return []
+
+    @staticmethod
+    def toggle_comment_like(user_id, comment_id):
+        """Toggle like on a comment."""
+        conn = db.get_connection()
+        if not conn:
+            return False, "DB Error"
+
+        try:
+            with conn.cursor() as cursor:
+                # Check if already liked
+                check_sql = "SELECT id FROM comment_likes WHERE user_id = %s AND comment_id = %s"
+                cursor.execute(check_sql, (user_id, comment_id))
+                existing_like = cursor.fetchone()
+
+                if existing_like:
+                    # Unlike
+                    delete_sql = "DELETE FROM comment_likes WHERE id = %s"
+                    cursor.execute(delete_sql, (existing_like['id'],))
+                    update_sql = "UPDATE comments SET likes_count = likes_count - 1 WHERE id = %s"
+                    cursor.execute(update_sql, (comment_id,))
+                    return True, "Unliked"
+                else:
+                    # Like
+                    insert_sql = "INSERT INTO comment_likes (user_id, comment_id) VALUES (%s, %s)"
+                    cursor.execute(insert_sql, (user_id, comment_id))
+                    update_sql = "UPDATE comments SET likes_count = likes_count + 1 WHERE id = %s"
+                    cursor.execute(update_sql, (comment_id,))
+                    return True, "Liked"
+        except Exception as e:
+            return False, str(e)
 
     @staticmethod
     def delete_post(post_id, user_id):

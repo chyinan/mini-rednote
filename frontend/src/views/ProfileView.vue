@@ -295,14 +295,68 @@ const openFollowList = async (type) => {
   
   try {
     const res = type === 'followers' 
-      ? await getFollowers(user.value.id)
-      : await getFollowing(user.value.id)
+      ? await getFollowers(user.value.id, userStore.user?.id)
+      : await getFollowing(user.value.id, userStore.user?.id)
     
     // Response format: { success: true, followers: [...] } or { success: true, following: [...] }
     followList.value = type === 'followers' ? res.data.followers : res.data.following
   } catch (e) {
     console.error(e)
     ElMessage.error('获取列表失败')
+  }
+}
+
+const handleListFollow = async (item) => {
+  if (!userStore.user) {
+     ElMessage.warning('请先登录')
+     router.push('/login')
+     return
+  }
+  if (item.id === userStore.user.id) return 
+
+  try {
+    if (item.is_following) {
+        // Show confirmation for unfollow
+        try {
+          await ElMessageBox.confirm('确认要取关吗？',{
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            center: true,
+            showIcon: false,
+            customClass: 'unfollow-confirm-dialog'
+          })
+        } catch (e) {
+          if (e === 'cancel') return
+        }
+
+        // Unfollow
+        const res = await unfollowUser(item.id, userStore.user.id)
+        if (res.data.success) {
+            item.is_following = 0
+            if (isOwnProfile.value) {
+                followCounts.value.following--
+            }
+            // If viewing own "following" list, remove the user from list
+            if (isOwnProfile.value && followListType.value === 'following') {
+               const index = followList.value.indexOf(item)
+               if (index !== -1) {
+                 followList.value.splice(index, 1)
+               }
+            }
+        }
+    } else {
+        // Follow
+        const res = await followUser(item.id, userStore.user.id)
+        if (res.data.success) {
+            item.is_following = 1
+            if (isOwnProfile.value) {
+                followCounts.value.following++
+            }
+        }
+    }
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('操作失败')
   }
 }
 
@@ -467,28 +521,48 @@ const goToChat = () => {
     </div>
 
     <!-- Follow List Modal -->
-    <div v-if="showFollowList" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showFollowList = false">
-      <div class="bg-white rounded-2xl p-6 w-full max-w-md h-[500px] flex flex-col">
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="text-lg font-bold">{{ followListType === 'followers' ? '粉丝列表' : '关注列表' }}</h3>
-          <button @click="showFollowList = false" class="text-gray-400 hover:text-gray-600">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+    <div v-if="showFollowList" class="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" @click.self="showFollowList = false">
+      <div class="bg-white rounded-xl w-full max-w-[400px] h-[60vh] flex flex-col overflow-hidden shadow-2xl">
+        <!-- Header -->
+        <div class="h-12 flex items-center justify-center relative border-b border-gray-50 flex-shrink-0">
+          <h3 class="font-bold text-gray-900 text-base">{{ followListType === 'followers' ? '粉丝' : '关注' }}</h3>
+          <button @click="showFollowList = false" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-2">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
         
-        <div class="flex-1 overflow-y-auto">
-          <div v-if="followList.length === 0" class="text-center py-10 text-gray-400">
-            暂无{{ followListType === 'followers' ? '粉丝' : '关注' }}
+        <!-- List -->
+        <div class="flex-1 overflow-y-auto p-0 custom-scrollbar">
+          <div v-if="followList.length === 0" class="h-full flex flex-col items-center justify-center text-gray-400 pb-10">
+             <div class="text-4xl mb-3 opacity-50">👥</div>
+             <p class="text-sm">暂无{{ followListType === 'followers' ? '粉丝' : '关注' }}</p>
           </div>
-          <div v-else class="space-y-4">
-            <div v-for="item in followList" :key="item.id" class="flex items-center justify-between">
-              <div class="flex items-center gap-3 cursor-pointer" @click="goToUser(item.id)">
-                <img :src="getImageUrl(item.avatar_url) || 'https://via.placeholder.com/40'" class="w-10 h-10 rounded-full object-cover bg-gray-100">
-                <span class="font-medium text-gray-900">{{ item.nickname }}</span>
+          
+          <div v-else class="px-4 py-2">
+            <div v-for="item in followList" :key="item.id" class="flex items-center justify-between py-3">
+              <div class="flex items-center gap-3 flex-1 min-w-0 cursor-pointer group" @click="goToUser(item.id)">
+                <img 
+                  :src="getImageUrl(item.avatar_url) || 'https://via.placeholder.com/48'" 
+                  class="w-11 h-11 rounded-full object-cover border border-gray-100 flex-shrink-0 group-hover:opacity-90 transition-opacity"
+                >
+                <div class="truncate pr-2">
+                  <h4 class="text-[15px] font-medium text-gray-900 truncate leading-snug">{{ item.nickname }}</h4>
+                  <p class="text-xs text-gray-400 truncate mt-0.5">小红书号：{{ item.username }}</p>
+                </div>
               </div>
-              <!-- Could add follow/unfollow buttons here for quick action -->
+              
+              <button 
+                v-if="userStore.user && item.id !== userStore.user.id"
+                @click="handleListFollow(item)"
+                class="px-4 py-1.5 rounded-full text-xs font-medium transition-all flex-shrink-0 border w-[76px] flex justify-center items-center"
+                :class="item.is_following 
+                  ? 'border-gray-200 text-gray-500 bg-transparent hover:bg-gray-50' 
+                  : 'border-xhs-red bg-xhs-red text-white hover:bg-red-600'"
+              >
+                {{ item.is_following ? '已关注' : (isOwnProfile && followListType === 'followers' ? '回关' : '关注') }}
+              </button>
             </div>
           </div>
         </div>
@@ -546,5 +620,12 @@ const goToChat = () => {
 .modal-fade-enter-from,
 .modal-fade-leave-to {
   opacity: 0;
+}
+
+.unfollow-confirm-dialog .el-message-box__header {
+  text-align: center;
+}
+.unfollow-confirm-dialog .el-message-box__title {
+  justify-content: center;
 }
 </style>

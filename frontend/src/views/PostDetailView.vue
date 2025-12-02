@@ -97,9 +97,10 @@ onMounted(async () => {
 })
 
 // Listen to route changes to reload data if ID changes
-watch(() => route.params.id, (newId) => {
+watch(() => route.params, () => {
+    const newId = route.params.id || route.params.postId
     if (newId) loadPostData()
-})
+}, { deep: true })
 
 const loadPostData = async () => {
   const currentPostId = route.params.id || route.params.postId

@@ -71,3 +71,4 @@ async def get_current_user_optional(credentials: Optional[HTTPAuthorizationCrede
     except HTTPException:
         return None
 
+

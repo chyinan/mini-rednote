@@ -427,7 +427,7 @@ class PostService:
 
     @staticmethod
     def delete_post(post_id, user_id):
-        """Delete a post."""
+        """Delete a post and its associated files."""
         conn = db.get_connection()
         if not conn:
             return False, "Database connection failed"
@@ -435,16 +435,47 @@ class PostService:
         try:
             with conn.cursor() as cursor:
                 # Verify ownership
-                cursor.execute("SELECT user_id FROM posts WHERE id = %s", (post_id,))
+                cursor.execute("SELECT user_id, image_url, video_url FROM posts WHERE id = %s", (post_id,))
                 post = cursor.fetchone()
                 if not post:
                     return False, "Post not found"
                 if post['user_id'] != user_id:
                     return False, "Permission denied"
                 
+                # Collect all file paths to delete
+                files_to_delete = []
+                
+                # Add cover image if exists
+                if post.get('image_url'):
+                    files_to_delete.append(post['image_url'])
+                
+                # Add video if exists
+                if post.get('video_url'):
+                    files_to_delete.append(post['video_url'])
+                
+                # Get all images from post_images table
+                cursor.execute("SELECT image_url FROM post_images WHERE post_id = %s", (post_id,))
+                post_images = cursor.fetchall()
+                for img in post_images:
+                    if img.get('image_url'):
+                        files_to_delete.append(img['image_url'])
+                
+                # Delete physical files
+                for file_path in files_to_delete:
+                    try:
+                        if file_path and os.path.exists(file_path):
+                            os.remove(file_path)
+                            print(f"Deleted file: {file_path}")
+                    except Exception as e:
+                        print(f"Warning: Failed to delete file {file_path}: {e}")
+                        # Continue even if file deletion fails
+                
+                # Delete from database (CASCADE will handle related records)
                 cursor.execute("DELETE FROM posts WHERE id = %s", (post_id,))
+                conn.commit()
                 return True, "Post deleted successfully"
         except Exception as e:
+            conn.rollback()
             return False, f"Failed to delete post: {str(e)}"
 
     @staticmethod

@@ -155,8 +155,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex justify-center h-screen md:h-[calc(100vh-3.5rem)] bg-gray-100 md:py-4">
-    <div class="flex flex-col w-full max-w-5xl bg-gray-50 h-full md:shadow-lg md:rounded-xl overflow-hidden md:border border-gray-200">
+  <div class="flex justify-center h-full bg-gray-100 md:py-4" style="box-sizing: border-box;">
+    <div class="flex flex-col w-full max-w-5xl bg-gray-50 h-full md:shadow-lg md:rounded-xl overflow-hidden md:border border-gray-200" style="max-height: 100%;">
       <!-- Header -->
       <div class="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 flex-shrink-0">
         <button @click="router.back()" class="text-gray-500 hover:text-gray-700">

@@ -1,7 +1,6 @@
 import os
 import uuid
 from PIL import Image
-import imghdr
 
 IMAGE_DIR = "assets"
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB (Increased from 10MB)
@@ -34,17 +33,16 @@ def validate_image_file(uploaded_file):
         # 使用PIL验证图片
         img = Image.open(uploaded_file.file)
         img.verify()
+        
+        # 使用 format 进行格式检查
+        image_type = img.format.lower() if img.format else None
+        
         uploaded_file.file.seek(0)  # 重置文件指针
         
         # 检查MIME类型
         if hasattr(uploaded_file, 'content_type') and uploaded_file.content_type:
             if uploaded_file.content_type not in ALLOWED_MIME_TYPES:
                 return False, "文件类型不匹配"
-        
-        # 使用imghdr进行二次验证
-        uploaded_file.file.seek(0)
-        image_type = imghdr.what(uploaded_file.file)
-        uploaded_file.file.seek(0)
         
         if not image_type:
             return False, "无法识别图片格式"

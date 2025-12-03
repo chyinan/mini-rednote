@@ -69,8 +69,13 @@ async def login(user_data: UserLogin):
     return {"success": False, "message": msg}
 
 @app.post("/api/register")
-async def register(user_data: UserRegister):
-    success, msg = AuthService.register_user(user_data.username, user_data.password, user_data.nickname)
+async def register(
+    username: str = Form(...),
+    password: str = Form(...),
+    nickname: Optional[str] = Form(None),
+    avatar: UploadFile = File(...)
+):
+    success, msg = AuthService.register_user(username, password, nickname, avatar)
     return {"success": success, "message": msg}
 
 @app.put("/api/user/profile")

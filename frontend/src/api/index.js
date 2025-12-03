@@ -5,7 +5,17 @@ const api = axios.create({
 })
 
 export const login = (username, password) => api.post('/login', { username, password })
-export const register = (username, password, nickname) => api.post('/register', { username, password, nickname })
+export const register = (username, password, nickname, avatar) => {
+  const formData = new FormData()
+  formData.append('username', username)
+  formData.append('password', password)
+  if (nickname) formData.append('nickname', nickname)
+  if (avatar) formData.append('avatar', avatar)
+  
+  return api.post('/register', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
 export const getPosts = (limit = 20, offset = 0, search = '', category = '') => 
   api.get('/posts', { params: { limit, offset, search, category } })
 export const createPost = (formData) => api.post('/posts', formData, {

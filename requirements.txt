@@ -5,3 +5,6 @@ streamlit-option-menu
 pillow
 bcrypt
 extra-streamlit-components
+pytest 
+pytest-mock 
+httpx

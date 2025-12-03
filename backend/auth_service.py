@@ -15,7 +15,7 @@ class AuthService:
         return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
 
     @staticmethod
-    def register_user(username, password, nickname=None):
+    def register_user(username, password, nickname=None, avatar_file=None):
         """Register a new user."""
         # 输入验证
         if not username or len(username.strip()) < 3:
@@ -29,11 +29,24 @@ class AuthService:
         if nickname and len(nickname) > 50:
             return False, "昵称不能超过50个字符"
         
+        # 头像为必填项
+        if not avatar_file:
+            return False, "请上传头像"
+        
         # 清理输入
         username = username.strip()
         if nickname:
             nickname = nickname.strip()
         
+        # 处理头像
+        avatar_url = None
+        try:
+            avatar_url = save_image(avatar_file)
+        except ValueError as e:
+            return False, str(e)
+        except Exception as e:
+            return False, "头像上传失败"
+
         conn = db.get_connection()
         if not conn:
             return False, "Database connection failed"
@@ -50,8 +63,8 @@ class AuthService:
                     return False, "用户名已存在，请选择其他用户名"
                 
                 # 用户名不存在，执行插入
-                sql = "INSERT INTO users (username, password_hash, nickname) VALUES (%s, %s, %s)"
-                cursor.execute(sql, (username, password_hash, nickname))
+                sql = "INSERT INTO users (username, password_hash, nickname, avatar_url) VALUES (%s, %s, %s, %s)"
+                cursor.execute(sql, (username, password_hash, nickname, avatar_url))
             return True, "Registration successful"
         except Exception as e:
             return False, "Registration failed"
@@ -74,9 +87,9 @@ class AuthService:
                     # 移除密码哈希，不返回给客户端
                     del user['password_hash']
                     return user, "Login successful"
-                return None, "Invalid username or password"
+                return None, "用户名或密码错误"
         except Exception as e:
-            return None, "Login failed"
+            return None, "登录失败"
 
     @staticmethod
     def get_user_by_id(user_id):

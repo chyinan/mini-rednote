@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue'
-import { createPost } from '../api'
+import { createPost, aiPolishStream } from '../api'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { ElMessage } from 'element-plus'
@@ -31,6 +31,51 @@ const form = ref({
   content: '',
   category: '穿搭'
 })
+
+const isPolishing = ref(false)
+const lastContent = ref('') // Backup for revert
+
+const handleRevert = () => {
+  if (lastContent.value) {
+    form.value.content = lastContent.value
+    lastContent.value = ''
+    ElMessage.success('已撤销')
+  }
+}
+
+const handleAIPolish = async () => {
+  if (!form.value.content && !form.value.title) {
+    ElMessage.warning('请先填写标题或正文')
+    return
+  }
+  
+  isPolishing.value = true
+  const originalContent = form.value.content 
+  lastContent.value = originalContent // Save for Revert
+  
+  form.value.content = '' // Clear content to show streaming result
+  
+  // 组合标题和正文作为上下文
+  const textToPolish = [form.value.title, originalContent].filter(t => t).join('\n\n')
+
+  await aiPolishStream(
+    textToPolish,
+    (chunk) => {
+      form.value.content += chunk
+    },
+    (error) => {
+      console.error(error)
+      ElMessage.error('AI 润色失败: ' + error)
+      if (!form.value.content) {
+          form.value.content = originalContent // Restore if nothing was generated
+          lastContent.value = '' // Reset revert backup if restored automatically
+      }
+      isPolishing.value = false
+    }
+  )
+  isPolishing.value = false
+  ElMessage.success('AI 润色完成！')
+}
 
 // --- Image Mode Handlers ---
 const handleFileChange = (e) => {
@@ -271,11 +316,41 @@ const handleSubmit = async () => {
         class="w-full text-xl font-bold border border-gray-200 rounded-lg py-2 px-3 focus:border-xhs-red focus:outline-none transition-colors placeholder-gray-300"
       >
       
-      <textarea 
-        v-model="form.content" 
-        placeholder="填写更全面的描述信息，让更多人看到你吧！" 
-        class="w-full h-60 resize-none text-gray-600 border border-gray-200 rounded-lg focus:border-xhs-red focus:outline-none placeholder-gray-300 text-base leading-relaxed p-3 transition-colors"
-      ></textarea>
+      <div class="relative">
+        <textarea 
+          v-model="form.content" 
+          placeholder="填写更全面的描述信息，让更多人看到你吧！" 
+          class="w-full h-60 resize-none text-gray-600 border border-gray-200 rounded-lg focus:border-xhs-red focus:outline-none placeholder-gray-300 text-base leading-relaxed p-3 transition-colors"
+        ></textarea>
+        
+        <div class="absolute bottom-4 right-4 flex gap-2">
+          <button 
+            v-if="lastContent && !isPolishing"
+            @click="handleRevert"
+            class="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 backdrop-blur text-gray-500 text-sm font-medium rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 hover:text-gray-700 transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+            </svg>
+            <span>撤回</span>
+          </button>
+
+          <button 
+            @click="handleAIPolish"
+            :disabled="isPolishing"
+            class="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 backdrop-blur text-xhs-red text-sm font-medium rounded-full shadow-sm border border-red-100 hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg v-if="isPolishing" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+              <path fill-rule="evenodd" d="M9.315 7.584C12.195 3.883 16.695 1.5 21.75 1.5a.75.75 0 01.75.75c0 5.056-2.383 9.555-6.084 12.436h.004c-.14.44-.584 1.259-1.344 2.02-.978.977-2.155 1.729-3.305 2.052l-.214.06-1.238 2.475a.75.75 0 01-1.341 0l-1.238-2.475-.214-.06c-1.15-.323-2.327-1.075-3.305-2.052C2.492 14.93 1.33 11.558 3.292 6.99a.75.75 0 011.133-.605c.94.659 1.674 1.272 2.203 1.839.49.524.89 1.142 1.192 1.836.484-.73 1.058-1.43 1.72-2.051.58-.542 1.18-1.05 1.796-1.516l-.221-.09-.001.001zM8.03 8.688a10.28 10.28 0 00-1.047 1.835l-.072.178a.75.75 0 01-1.286.065 8.78 8.78 0 00-.675-.892c-1.183 2.12-1.31 3.748-.935 4.864.32.954.96 1.778 1.73 2.55.55.55 1.137.952 1.697 1.198l.294.13a.75.75 0 01.288.995l-.744 1.487 1.487-.744a.75.75 0 01.995.288l.13.294c.246.56.648 1.146 1.198 1.697.772.77 1.596 1.41 2.55 1.73 1.116.374 2.744.248 4.864-.935-.287-.21-.587-.434-.892-.675a.75.75 0 01.065-1.286l.178-.072a10.28 10.28 0 001.835-1.047 20.81 20.81 0 01-8.695-8.695z" clip-rule="evenodd" />
+            </svg>
+            <span>AI 润色</span>
+          </button>
+        </div>
+      </div>
       
       <div class="space-y-2">
         <label class="text-sm font-medium text-gray-700">选择分类</label>

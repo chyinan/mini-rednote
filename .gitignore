@@ -108,6 +108,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 assets/
+演讲报告/
 
 # Jupyter Notebook
 .ipynb_checkpoints

@@ -1,9 +1,11 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import os
+import httpx
+import json
 from backend.auth_service import AuthService
 from backend.post_service import PostService
 from backend.message_service import MessageService
@@ -55,6 +57,9 @@ class MessageCreate(BaseModel):
 class MarkRead(BaseModel):
     user_id: int
     sender_id: int
+
+class AIPolishRequest(BaseModel):
+    content: str
 
 # --- Auth Routes ---
 @app.post("/api/login")
@@ -281,6 +286,58 @@ async def mark_notifications_read(data: InteractionCreate):
     # Reusing InteractionCreate just for user_id
     success = MessageService.mark_notifications_read(data.user_id)
     return {"success": success}
+
+# --- AI Polish Route ---
+@app.post("/api/ai/polish")
+async def ai_polish(request: AIPolishRequest):
+    if not request.content:
+        raise HTTPException(status_code=400, detail="Content is required")
+
+    prompt = f"""请将以下文本改写成典型的小红书文案风格：
+1. 标题要吸引眼球，使用爆款关键词
+2. 正文包含大量Emoji表情
+3. 语气活泼、热情、真诚，像在和闺蜜聊天
+4. 适当添加标签（hashtags）
+5. 排版清晰，分段友好
+
+原文内容：
+{request.content}
+
+请直接输出改写后的文案，不要包含其他解释性文字。"""
+
+    async def generate():
+        try:
+            async with httpx.AsyncClient() as client:
+                async with client.stream(
+                    "POST",
+                    "http://localhost:11434/api/generate",
+                    json={
+                        "model": "gemma3n:e4b",
+                        "prompt": prompt,
+                        "stream": True
+                    },
+                    timeout=60.0
+                ) as response:
+                    if response.status_code != 200:
+                        yield f"Error: Ollama returned status {response.status_code}"
+                        return
+
+                    async for line in response.aiter_lines():
+                        if line:
+                            try:
+                                data = json.loads(line)
+                                if "response" in data:
+                                    yield data["response"]
+                                if data.get("done", False):
+                                    break
+                            except json.JSONDecodeError:
+                                continue
+        except httpx.ConnectError:
+             yield "Error: Could not connect to local Ollama service."
+        except Exception as e:
+             yield f"Error: {str(e)}"
+
+    return StreamingResponse(generate(), media_type="text/plain")
 
 if __name__ == "__main__":
     import uvicorn

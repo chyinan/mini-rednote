@@ -69,6 +69,41 @@ export const getUnreadCount = (userId) => api.get('/messages/unread/count', { pa
 export const getNotifications = (userId) => api.get('/notifications', { params: { user_id: userId } })
 export const markNotificationsRead = (userId) => api.put('/notifications/read', { user_id: userId })
 
+// AI API
+// export const aiPolish = (content) => api.post('/ai/polish', { content })
+export const aiPolishStream = async (content, onChunk, onError) => {
+  try {
+    const response = await fetch('http://localhost:8000/api/ai/polish', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      const chunk = decoder.decode(value, { stream: true })
+      if (chunk.startsWith("Error:")) {
+         if (onError) onError(chunk)
+         break
+      }
+      if (onChunk) onChunk(chunk)
+    }
+  } catch (error) {
+    if (onError) onError(error.message)
+  }
+}
+
 export const getImageUrl = (path) => {
   if (!path) return ''
   if (path.startsWith('http://') || path.startsWith('https://')) {
